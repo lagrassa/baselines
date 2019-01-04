@@ -60,8 +60,6 @@ def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate
         env = retro_wrappers.make_retro(game=env_id, max_episode_steps=10000, use_restricted_actions=retro.Actions.DISCRETE, state=gamestate)
     else:
         env = gym.make(env_id)
-        if isinstance(env.observation_space, gym.spaces.Dict):
-            env = gym.wrappers.FlattenDictWrapper(env, dict_keys=['observation', 'desired_goal'])
 
     if flatten_dict_observations and isinstance(env.observation_space, gym.spaces.Dict):
         keys = env.observation_space.spaces.keys()
