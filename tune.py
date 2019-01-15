@@ -1,6 +1,7 @@
 import ray
 import baselines.ppo2.ppo2 as ppo2
 import ray.tune as tune
+import numpy as np
 import tensorflow as tf
 import baselines
 from baselines.common.tf_util import get_session
@@ -12,7 +13,6 @@ ray.init()
 
 class TrainableClass(tune.Trainable):
     def _setup(self, arg):
-        self.alpha = arg["alpha"]
         lr = arg["lr"]
         vf_coef = arg["vf_coef"]
         max_grad_norm = arg["max_grad_norm"]
@@ -61,11 +61,46 @@ def pick_params(trial_list):
     best_trial = max(trial_list, key=lambda trial: trial.last_result["success_rate"])
     return best_trial.config
 
+def run_async_hyperband(smoke_test = False):
+    ahb = tune.schedulers.AsyncHyperBandScheduler(
+        time_attr="training_iteration",
+        reward_attr="success_rate",
+        grace_period=5,
+        max_t=100)
+    return tune.run_experiments(
+        {
+            "asynchyperband_test": {
+                "run": TrainableClass,
+                "stop": {
+                    "done": True
+                },
+                "num_samples": 1,
+                "resources_per_trial": {
+                    "cpu": 1,
+                    "gpu": 0
+                },
+                "config": {
+                    "lr": tune.sample_from(
+                        lambda spec: np.random.uniform(0.001, 0.1)),
+                    "vf_coef": tune.sample_from(
+                        lambda spec: np.random.uniform(0.4, 0.6)),
+                    "max_grad_norm": tune.sample_from(
+                        lambda spec: np.random.uniform(0.4, 0.6)),
+                    "cliprange": tune.sample_from(
+                        lambda spec: np.random.uniform(0.1, 0.3)),
+                    "reward_scale": tune.sample_from(
+                        lambda spec: np.random.uniform(0.01, 10)),
+                    "lam": tune.sample_from(
+                        lambda spec: np.random.uniform(0.92, 0.99)),
+                },
+            }
+        },
+scheduler=ahb)
+
 experiment_spec = tune.Experiment(
     "experiment_name2",
     TrainableClass,
-    config = {"alpha": tune.grid_search([0.1, 0.001]),
-              "lr":tune.grid_search([0.0003]),
+    config = {"lr":tune.grid_search([0.0003]),
               "vf_coef":tune.grid_search([0.5]),
               "max_grad_norm":tune.grid_search([0.5]),
               "cliprange":tune.grid_search([0.2]),
@@ -82,6 +117,7 @@ experiment_spec = tune.Experiment(
     checkpoint_freq = 5)
 
 if __name__=="__main__":
-    res = tune.run_experiments(experiments=experiment_spec)
+    #res = tune.run_experiments(experiments=experiment_spec)
+    res = run_async_hyperband()
     pick_params(res)
 
