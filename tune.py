@@ -47,9 +47,9 @@ class TrainableClass(tune.Trainable):
 
     def _train(self):
         self.local_variables['update'] = self.nupdates
-        self.alg_module.learn_iter(**self.local_variables)
+        _, success_rate = self.alg_module.learn_iter(**self.local_variables)
         self.nupdates += 1 
-        return {'done':self.nupdates > self.nupdates_total, 'mean_accuracy':4}
+        return {'done':self.nupdates > self.nupdates_total or success_rate > 0.95, 'success_rate':success_rate}
 
     def _save(self, state):
         return {}
@@ -58,7 +58,7 @@ class TrainableClass(tune.Trainable):
         pass
 
 def pick_params(trial_list):
-    best_trial = max(trial_list, key=lambda trial: trial.last_result["mean_accuracy"])
+    best_trial = max(trial_list, key=lambda trial: trial.last_result["success_rate"])
     return best_trial.config
 
 experiment_spec = tune.Experiment(
