@@ -225,6 +225,7 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     tnow = time.time()
     # Calculate the fps (frame per second)
     fps = int(nbatch / (tnow - tstart))
+    success_rate = safemean([epinfo['is_success'] for epinfo in epinfobuf]) 
     if update % log_interval == 0 or update == 1:
         # Calculates if value function is a good predicator of the returns (ev > 1)
         # or if it's just worse than predicting nothing (ev =< 0)
@@ -236,6 +237,7 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
         logger.logkv("explained_variance", float(ev))
         logger.logkv('eprewmean', safemean([epinfo['r'] for epinfo in epinfobuf]))
         logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
+        logger.logkv('success_rate', success_rate)
         if eval_env is not None:
             logger.logkv('eval_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
             logger.logkv('eval_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
@@ -250,7 +252,7 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
         savepath = osp.join(checkdir, '%.5i'%update)
         print('Saving to', savepath)
         model.save(savepath)
-    return model
+    return model, success_rate
 # Avoid division error when calculate the mean (in our case if epinfo is empty returns np.nan, not return an error)
 
 def safemean(xs):
