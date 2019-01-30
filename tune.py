@@ -9,7 +9,14 @@ import baselines
 from baselines.common.tf_util import get_session
 from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, make_vec_env, make_env
 from baselines.common.vec_env.vec_normalize import VecNormalize
+#from gym.envs.registration import register
 GIT_DIR = "/home/lagrassa/git/"
+
+#register(
+#    id='StirEnv-v0',
+#    entry_point='cup_skills.floating_stirrer.World'
+#)
+
 
 def alg_to_module(alg):
     import sys
@@ -98,7 +105,6 @@ def alg_to_config(alg):
                         'total_timesteps':total_timesteps, 
                         'ent_coef':0.0,
                         'gamma':0.95,
-                        'env':"pusher",
                         'log_interval':10,
                         'nminibatches':4,
                         'noptepochs':4,
@@ -129,7 +135,8 @@ def run_async_hyperband(smoke_test = False, expname = "test"):
         reward_attr="success_rate",
         grace_period=int(4.67e5/10.0),
         max_t=int(4.67e5/4.0))
-    params = {'env_name':"FetchPush-v1", 'alg' : "mbrl", 'exp_name' : expname}
+    params = {'env_name':"StirEnv-v0", 'alg' : "ppo2", 'exp_name' : expname}
+    #params = {'env_name':"FetchPush-v1", 'alg' : "ppo2", 'exp_name' : expname}
     if smoke_test:
         num_samples = 1
         num_cpu = 1
