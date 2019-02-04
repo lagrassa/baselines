@@ -13,17 +13,18 @@ try:
 except ImportError:
     MPI = None
 from baselines.ppo2.runner import Runner
-
+from cup_skills.local_setup import path as PATH
+PATH = PATH+"data/"
 
 def constfn(val):
     def f(_):
         return val
     return f
 
-def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2048, ent_coef=0.0, lr=3e-4,
+def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=32, ent_coef=0.0, lr=3e-4,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
-            save_interval=0, load_path=None, model_fn=None, **network_kwargs):
+            save_interval=0, load_path=None, model_fn=None, exp_name="test", **network_kwargs):
     '''
     Learn policy using PPO algorithm (https://arxiv.org/abs/1707.06347)
 
@@ -80,6 +81,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     '''
     kwargs = {} #I'm sorry 6.031
     frame = inspect.currentframe()
+    import os
+    if "SLURM_ARRAY_TASK_ID" in os.environ.keys():
+        exp_name = exp_name + "_" + os.environ["SLURM_ARRAY_TASK_ID"]
     separate_list = ["network_kwargs"]
     args, _, _, values = inspect.getargvalues(frame)
     for x, p in inspect.signature(learn).parameters.items():
@@ -93,12 +97,19 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     nenvs = env.num_envs
     nbatch = nenvs * nsteps
     nupdates = total_timesteps//nbatch
+    mean_rewards = []
+    success_rates = []
     for update in range(1, nupdates+1):
         local_variables['update'] = update
-        model = learn_iter(**local_variables)
+        model, success_rate, mean_reward = learn_iter(**local_variables)
+        mean_rewards.append(mean_reward)
+        success_rates.append(success_rate)
+        np.save(PATH+"mean_rewards_"+exp_name+".npy", mean_rewards)
+        np.save(PATH+"success_rates_"+exp_name+".npy", success_rates)
+
     return model
 
-def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=2048, ent_coef=0.0, lr=3e-4, reward_scale = None,
+def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=64, ent_coef=0.0, lr=3e-4, reward_scale = None, exp_name=None,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             save_interval=0, load_path=None, model_fn=None, **network_kwargs):
@@ -169,7 +180,8 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
                       }
     return local_variables
 
-def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None):
+def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None):
+
     assert nbatch % nminibatches == 0
     # Start timer
     tstart = time.time()
@@ -224,7 +236,11 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     tnow = time.time()
     # Calculate the fps (frame per second)
     fps = int(nbatch / (tnow - tstart))
-    success_rate = safemean([epinfo['is_success'] for epinfo in epinfobuf]) 
+    try:
+        success_rate = safemean([epinfo['is_success'] for epinfo in epinfobuf])
+        mean_reward = safemean([epinfo['r'] for epinfo in epinfobuf])
+    except:
+        import ipdb; ipdb.set_trace()
     if update % log_interval == 0 or update == 1:
         # Calculates if value function is a good predicator of the returns (ev > 1)
         # or if it's just worse than predicting nothing (ev =< 0)
@@ -237,6 +253,7 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
         logger.logkv('eprewmean', safemean([epinfo['r'] for epinfo in epinfobuf]))
         logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
         logger.logkv('success_rate', success_rate)
+        
         if eval_env is not None:
             logger.logkv('eval_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
             logger.logkv('eval_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
@@ -251,11 +268,11 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
         savepath = osp.join(checkdir, '%.5i'%update)
         print('Saving to', savepath)
         model.save(savepath)
-    return model, success_rate
+    return model, success_rate, mean_reward
 # Avoid division error when calculate the mean (in our case if epinfo is empty returns np.nan, not return an error)
 
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
-
+    import ipdb; ipdb.set_trace()
 
 

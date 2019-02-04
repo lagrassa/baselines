@@ -44,6 +44,7 @@ class PolicyWithValue(object):
         latent = tf.layers.flatten(latent)
 
         # Based on the action space, will select what probability distribution type
+        import ipdb; ipdb.set_trace()
         self.pdtype = make_pdtype(env.action_space)
 
         self.pd, self.pi = self.pdtype.pdfromlatent(latent, init_scale=0.01)
