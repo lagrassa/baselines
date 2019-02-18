@@ -1,12 +1,10 @@
-from tune import best_hyperparams_for_config
-
+from trainable import best_hyperparams_for_config
+from helper import get_formatted_name
 algs = ["ppo2", "naf", "ddpg", "cma"]
+algs = ['naf']
 env_name = "Pendulum-v0"
 
-def get_formatted_name(params):
-    return params['alg']+params['exp_name']+"obs_"+str(params['obs_noise_std'])+"act_"+str(params['action_noise_std'])
-
-def optimize_hyperparams(env_name,params):
+def optimize_hyperparams(params):
     for alg in algs:
         exp_name = get_formatted_name(params)
         best_hyperparams_for_config(params, exp_name)
@@ -26,8 +24,12 @@ def run_action_space_experiment(num_samples, param_set, exp_name, env_name):
         for action_noise_std in sample_space:
             params = default_params.copy()
             params['action_noise_std'] = action_noise_std
+            hyperparam_file = get_formatted_name(params)+"best_hyperparams.npy"
+            if hyperparam_file not in os.listdir("hyperparams"):
+                optimize_hyperparams(params)
             run_batch_job(params)
 
+""" precondition: hyperparameter optimization has already happened"""
 def run_batch_job(params):
     import os
     exp_name_with_params = get_formatted_name(params)
@@ -47,10 +49,12 @@ def write_batch_job(params, num_processes=8):
     
             
 def test_write_batch_job():
-    default_params = {'env_name':"Pendulum-v0", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'ddpg'}
+    default_params = {'env_name':"Pendulum-v0", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'}
     write_batch_job(default_params)
     f = open("batch_scripts/batch_job"+get_formatted_name(default_params)+".sh")
     print(f.read())
     f.close()
+
+optimize_hyperparams({'env_name':"Pendulum-v0", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
 
 test_write_batch_job()
