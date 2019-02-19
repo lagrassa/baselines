@@ -260,6 +260,7 @@ def learn_iter(epoch_episode_rewards=[],
                     epoch_episode_rewards.append(episode_reward[d])
                     episode_rewards_history.append(episode_reward[d])
                     epoch_episode_steps.append(episode_step[d])
+                    success_rates.append(int(episode_reward[d] >= 0))
                     episode_reward[d] = 0.
                     episode_step[d] = 0
                     epoch_episodes[0] += 1
@@ -293,7 +294,6 @@ def learn_iter(epoch_episode_rewards=[],
             for t_rollout in range(nb_eval_steps):
                 eval_action, eval_q, _, _ = agent.step(eval_obs, apply_noise=False, compute_Q=True)
                 eval_obs, eval_r, eval_done, eval_info = eval_env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
-                success_rates.append(int(eval_r > 0))
                 if render_eval:
                     eval_env.render()
                 eval_episode_reward += eval_r
