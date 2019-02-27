@@ -78,6 +78,7 @@ def train(args, extra_args):
         env=env,
         seed=seed,
         total_timesteps=total_timesteps,
+        #exp_name=extra_args["exp_name"],
         **alg_kwargs
     )
 
@@ -182,7 +183,6 @@ def parse_cmdline_kwargs(args):
             return eval(v)
         except (NameError, SyntaxError):
             return v
-
     return {k: parse(v) for k,v in parse_unknown_args(args).items()}
 
 
@@ -203,8 +203,11 @@ def main(args):
     else:
         logger.configure(format_strs=[])
         rank = MPI.COMM_WORLD.Get_rank()
-
-    model, env = train(args, extra_args)
+    arg1, env = train(args, extra_args)
+    if isinstance(arg1, list):
+        model, _ = arg1
+    else:
+        model = arg1
     env.close()
 
     if args.save_path is not None and rank == 0:

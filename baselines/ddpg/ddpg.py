@@ -99,8 +99,6 @@ def learn_setup(network, env,
     if total_timesteps is not None:
         assert nb_epochs is None
         nb_epochs = int(total_timesteps) // (nb_epoch_cycles * nb_rollout_steps)
-    else:
-        nb_epochs = 500
 
     if MPI is not None:
         rank = MPI.COMM_WORLD.Get_rank()
@@ -197,6 +195,7 @@ def learn_setup(network, env,
 def learn_iter(epoch_episode_rewards=[], 
                epoch_episode_steps=[],
                episode_rewards_history=None,
+               update = None,
                epoch_actions = [],
                param_noise_adaption_interval=None,
                eval_env=None,
@@ -324,6 +323,10 @@ def learn_iter(epoch_episode_rewards=[],
     combined_stats['train/loss_critic'] = np.mean(epoch_critic_losses)
     combined_stats['train/param_noise_distance'] = np.mean(epoch_adaptive_distances)
     combined_stats['total/duration'] = duration
+    assert(np.mean(success_rates) >= 0)
+    if np.mean(success_rates) < 0:
+        import ipdb; ipdb.set_trace()
+
     combined_stats['rollout/success_rate'] = np.mean(success_rates)
     combined_stats['total/steps_per_second'] = float(t[0]) / float(duration)
     combined_stats['total/episodes'] = episodes

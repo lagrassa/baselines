@@ -1,5 +1,4 @@
 import os
-import ipdb
 import inspect
 import time
 import numpy as np
@@ -97,14 +96,11 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=3
     nenvs = env.num_envs
     nbatch = nenvs * nsteps
     nupdates = total_timesteps//nbatch
-    mean_rewards = []
     success_rates = []
     for update in range(1, nupdates+1):
         local_variables['update'] = update
-        model, success_rate, mean_reward = learn_iter(**local_variables)
-        mean_rewards.append(mean_reward)
+        model, success_rate= learn_iter(**local_variables)
         success_rates.append(success_rate)
-        np.save(PATH+"mean_rewards_"+exp_name+".npy", mean_rewards)
         np.save(PATH+"success_rates_"+exp_name+".npy", success_rates)
 
     return model
@@ -112,6 +108,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=3
 def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=64, ent_coef=0.0, lr=3e-4, reward_scale = None, exp_name=None,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
+            nupdates=None,
             save_interval=0, load_path=None, model_fn=None, **network_kwargs):
 
     set_global_seeds(seed)
@@ -120,7 +117,6 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
     else: assert callable(lr)
     if isinstance(cliprange, float): cliprange = constfn(cliprange)
     else: assert callable(cliprange)
-    total_timesteps = int(total_timesteps)
     policy = build_policy(env, network, **network_kwargs)
 
     # Get the nb of env
@@ -158,7 +154,6 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
     # Start total timer
     tfirststart = time.time()
 
-    nupdates = total_timesteps//nbatch
     local_variables = {
                        'nbatch':nbatch,
                        'nminibatches':nminibatches,
@@ -268,7 +263,7 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
         savepath = osp.join(checkdir, '%.5i'%update)
         print('Saving to', savepath)
         model.save(savepath)
-    return model, success_rate, mean_reward
+    return model, success_rate
 # Avoid division error when calculate the mean (in our case if epinfo is empty returns np.nan, not return an error)
 
 def safemean(xs):

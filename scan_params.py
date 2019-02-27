@@ -1,51 +1,57 @@
 from trainable import best_hyperparams_for_config
+import numpy as np
+import os
 from helper import get_formatted_name
-algs = ["ppo2", "naf", "ddpg", "cma"]
-algs = ['naf']
-env_name = "Pendulum-v0"
-
-def optimize_hyperparams(params):
+env_name = "FetchPush-v1"
+algs = ["naf"]
+def optimize_hyperparams(params, smoke_test = False):
     for alg in algs:
         exp_name = get_formatted_name(params)
-        best_hyperparams_for_config(params, exp_name)
+        best_hyperparams_for_config(params, exp_name, smoke_test = smoke_test)
 
 """
 given a set of parameters, runs all algorithms with the optimal hyperparameters
 runs them multiple times, preferably on different clusters (so with LLsub then)
 saves the exp_name. might want to do using LLsub
 """
-def run_action_space_experiment(num_samples, param_set, exp_name, env_name):
+def run_action_noise_experiment(num_samples, param_set, exp_name, env_name):
     #create experiment file based on params
     #run experiment using LLsub, probably alg by alg and params by params
     default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
     for alg in algs:
         default_params['alg'] = alg
-        sample_space = {0.1,0.2}
+        sample_space = {0,0.05, 0.1,0.2}
+        #sample_space = {0.05,0.2}
         for action_noise_std in sample_space:
             params = default_params.copy()
             params['action_noise_std'] = action_noise_std
             hyperparam_file = get_formatted_name(params)+"best_hyperparams.npy"
             if hyperparam_file not in os.listdir("hyperparams"):
                 optimize_hyperparams(params)
+            else:
+                print("Already found the hyperparams")
             run_batch_job(params)
 
 """ precondition: hyperparameter optimization has already happened"""
 def run_batch_job(params):
     import os
     exp_name_with_params = get_formatted_name(params)
-    np.save(exp_name_with_params, params)
+    np.save("params/"+exp_name_with_params+"_params.npy", params)
     filename = write_batch_job(exp_name_with_params)
     os.system("LLsub "+filename)
 
-def write_batch_job(params, num_processes=8):
-    name = get_formatted_name(params)
-    batch_file = open("batch_scripts/batch_job"+name+".sh", "w")
+def write_batch_job(name, num_processes=8):
+    filename = "batch_scripts/batch_job"+name+".sh"
+    batch_file = open(filename, "w")
     batch_file.write("#!/bin/sh\n")
-    batch_file.write("#SBATCH -o "+ name +".out-%j\n")
+    batch_file.write("#SBATCH -o "+ "batchlogs/"+name +".out-%j\n")
     batch_file.write("#SBATCH -a "+ "1-"+str(num_processes)+"\n")
+    batch_file.write("#SBATCH -s "+ " 2"+"\n")
     batch_file.write("#SBATCH --constraint=opteron\n")
     batch_file.write("source /etc/profile\nmodule load cuda-9.0 \n")
+    batch_file.write("python trainable.py "+name)
     batch_file.close()
+    return filename
     
             
 def test_write_batch_job():
@@ -55,6 +61,14 @@ def test_write_batch_job():
     print(f.read())
     f.close()
 
-optimize_hyperparams({'env_name':"Pendulum-v0", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
+#optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
+env_name = "FetchPush-v1"
+exp_name="AL25"
+param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
+param_set['alg'] ='naf'
 
-test_write_batch_job()
+#optimize_hyperparams(param_set, smoke_test = True)
+if __name__=="__main__":
+    import sys
+    algs = [sys.argv[1]]
+    run_action_noise_experiment(10, param_set, exp_name, env_name)

@@ -23,6 +23,8 @@ def make_vec_env(env_id, env_type, num_env, seed,
                  start_index=0,
                  reward_scale=1.0,
                  flatten_dict_observations=True,
+                 action_noise_std=0,
+                 obs_noise_std=0,
                  gamestate=None):
     """
     Create a wrapped, monitored SubprocVecEnv for Atari and MuJoCo.
@@ -44,9 +46,10 @@ def make_vec_env(env_id, env_type, num_env, seed,
 
     set_global_seeds(seed)
     if num_env > 1:
+        assert(False, "Not supported yet")
         return SubprocVecEnv([make_thunk(i + start_index) for i in range(num_env)])
     else:
-        return DummyVecEnv([make_thunk(start_index)])
+        return DummyVecEnv([make_thunk(start_index)],action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
 
 
 def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate=None, flatten_dict_observations=True, wrapper_kwargs=None):
@@ -177,5 +180,4 @@ def parse_unknown_args(args):
         elif preceded_by_key:
             retval[key] = arg
             preceded_by_key = False
-
     return retval

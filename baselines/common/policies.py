@@ -44,7 +44,6 @@ class PolicyWithValue(object):
         latent = tf.layers.flatten(latent)
 
         # Based on the action space, will select what probability distribution type
-        import ipdb; ipdb.set_trace()
         self.pdtype = make_pdtype(env.action_space)
 
         self.pd, self.pi = self.pdtype.pdfromlatent(latent, init_scale=0.01)
@@ -165,7 +164,6 @@ def build_policy(env, policy_network, value_network=None,  normalize_observation
             with tf.variable_scope('vf', reuse=tf.AUTO_REUSE):
                 # TODO recurrent architectures are not supported with value_network=copy yet
                 vf_latent = _v_net(encoded_x)
-
         policy = PolicyWithValue(
             env=env,
             observations=X,

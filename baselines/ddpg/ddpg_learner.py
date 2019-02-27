@@ -327,7 +327,6 @@ class DDPG(object):
         })
         self.actor_optimizer.update(actor_grads, stepsize=self.actor_lr)
         self.critic_optimizer.update(critic_grads, stepsize=self.critic_lr)
-
         return critic_loss, actor_loss
 
     def initialize(self, sess):
@@ -390,7 +389,8 @@ class DDPG(object):
 
         self.param_noise.adapt(mean_distance)
         return mean_distance
-
+    def save(self, save_path):
+        print("Save not implemented")
     def reset(self):
         # Reset internal state after an episode is complete.
         if self.action_noise is not None:
