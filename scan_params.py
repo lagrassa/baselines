@@ -27,6 +27,7 @@ def run_action_noise_experiment(num_samples, param_set, exp_name, env_name):
             params['action_noise_std'] = action_noise_std
             hyperparam_file = get_formatted_name(params)+"best_hyperparams.npy"
             if hyperparam_file not in os.listdir("hyperparams"):
+                print("Optimizing hyperparams", params)
                 optimize_hyperparams(params)
             else:
                 print("Already found the hyperparams")
@@ -45,9 +46,9 @@ def write_batch_job(name, num_processes=8):
     batch_file = open(filename, "w")
     batch_file.write("#!/bin/sh\n")
     batch_file.write("#SBATCH -o "+ "batchlogs/"+name +".out-%j\n")
+    batch_file.write("#SBATCH -C "+ "opteron"+"\n")
     batch_file.write("#SBATCH -a "+ "1-"+str(num_processes)+"\n")
     batch_file.write("#SBATCH -s "+ " 2"+"\n")
-    batch_file.write("#SBATCH --constraint=opteron\n")
     batch_file.write("source /etc/profile\nmodule load cuda-9.0 \n")
     batch_file.write("python trainable.py "+name)
     batch_file.close()
@@ -63,11 +64,10 @@ def test_write_batch_job():
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
 env_name = "FetchPush-v1"
-exp_name="AL25"
+exp_name="AL26c2"
 param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
 param_set['alg'] ='naf'
-
-#optimize_hyperparams(param_set, smoke_test = True)
+#optimize_hyperparams(param_set, smoke_test = False)
 if __name__=="__main__":
     import sys
     algs = [sys.argv[1]]
