@@ -49,6 +49,7 @@ def make_class(params):
             #self.alg_module = arg["alg_module"]
             env_name = params['env_name']
             self.exp_name = params['exp_name']
+            self.params = params
             self.alg = params['alg']
             self.lock = threading.Lock()
             self.best_success_rates = []
@@ -63,10 +64,12 @@ def make_class(params):
             sample_config, fixed_config, env_config = alg_to_config(params['alg'], env_name)
             if 'sample_config_best' not in arg.keys():
                 sample_config_sample = {ky:arg[ky] for ky in sample_config.keys() }
+                sample_config_bound = sample_config_sample
                 learn_params = {**sample_config_sample, **fixed_config}
             else:
                 learn_params = {**arg['sample_config_best'], **fixed_config}
-            
+                sample_config_bound = arg['sample_config_best']
+            self.sample_config_bound = sample_config_bound 
             action_noise_std = params['action_noise_std']
             obs_noise_std = params['obs_noise_std']
             
@@ -88,15 +91,16 @@ def make_class(params):
 
         def _train(self):
             self.local_variables['update'] = self.nupdates
-            if self.alg == "naf":
-                print("num updates", self.nupdates)
+            if self.nupdates % 10 == 0:
+                print("nupdates", self.alg, self.nupdates)
             _, success_rate = self.alg_module.learn_iter(**self.local_variables)
+            print("success_rate", success_rate)
             self.lock.acquire()
             if success_rate > self.best_success_rate:
                 self.best_success_rates.append(success_rate)
                 self.best_success_rate = success_rate
-
-            np.save(self.exp_name+"_best_success_rates.npy", self.best_success_rates)
+                np.save(get_formatted_name(self.params)+"best_params_so_far.npy", self.sample_config_bound)
+                np.save(get_formatted_name(self.params)+"_best_success_rates.npy", self.best_success_rates)
             self.lock.release()
 
             self.nupdates += 1 
@@ -194,7 +198,7 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
         NBATCH_STANDARD = 10
     else:
         grace_period = 4
-        max_t = 150
+        max_t = 1e5//50#NBATCH_STANDARD
         num_samples = 30
         num_cpu = 8
 
@@ -219,7 +223,7 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
                "config": alg_to_config(params['alg'])[0], #just the tuneable ones
             }
         },
-scheduler=ahb, queue_trials=True, verbose=1)
+scheduler=ahb, queue_trials=True, verbose=0, resume=False)
 """
 Precondition: hyperparameter optimization happened
 """
@@ -245,7 +249,7 @@ def best_hyperparams_for_config(params, exp_name, smoke_test = False):
     ray.init()
     res = run_async_hyperband(expname=exp_name, smoke_test = smoke_test, params=params)
     best_params = pick_params(res, exp_name)
-    np.save("hyperparams/"+exp_name+"best_hyperparams.npy", best_params)
+    np.save("hyperparams/"+get_formatted_name(params)+"best_hyperparams.npy", best_params)
     ray.shutdown()
     return best_params
 
