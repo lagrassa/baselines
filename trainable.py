@@ -10,7 +10,8 @@ from baselines.common.tf_util import get_session
 from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, make_vec_env, make_env
 from baselines.common.vec_env.vec_normalize import VecNormalize
 #from gym.envs.registration import register
-GIT_DIR = "/home/gridsan/alagrassa/git/"
+GIT_DIR = "/home/lagrassa/git/"
+SAVE_DIR = "/home/lagrassa/git/baselines/"
 NBATCH_STANDARD = 50
 
 #register(
@@ -34,14 +35,14 @@ def alg_to_module(alg):
         print ("error, pets not supported")
 
     elif alg == 'cma':
-        print('error')
+        import cma_agent.run_experiment as cma
+        return cma
+       
     elif alg == "ddpg":
         import baselines.ddpg.ddpg as ddpg
         return ddpg
 
 
-    alg_to_module = {'ppo2':ppo2,  'naf':naf_tf_main, 'cma':None, 'ddpg':ddpg}
-    return alg_to_module[alg]
 
 def make_class(params):
     class TrainableClass(tune.Trainable):
@@ -99,8 +100,8 @@ def make_class(params):
             if success_rate > self.best_success_rate:
                 self.best_success_rates.append(success_rate)
                 self.best_success_rate = success_rate
-                np.save(get_formatted_name(self.params)+"best_params_so_far.npy", self.sample_config_bound)
-                np.save(get_formatted_name(self.params)+"_best_success_rates.npy", self.best_success_rates)
+                np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"best_params_so_far.npy", self.sample_config_bound)
+                np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"_best_success_rates.npy", self.best_success_rates)
             self.lock.release()
 
             self.nupdates += 1 
@@ -174,6 +175,19 @@ def alg_to_config(alg, env_name=None):
         
         env_config = {'num_env':1
         }
+    elif alg == "cma":
+        sample_config =  {"CMA_mu": tune.sample_from(
+                        lambda spec: int(np.random.uniform(3,NBATCH_STANDARD//2))),
+                    "CMA_cmean": tune.sample_from(
+                        lambda spec: np.random.uniform(0.8, 1.2)),
+                    "CMA_rankmu": tune.sample_from(
+                        lambda spec: np.random.uniform(0.8, 1.2)),
+                    "CMA_rankone": tune.sample_from(
+                        lambda spec: np.random.uniform(0.8, 1.2))}
+        
+        fixed_config = {'env_name':env_name, 
+                        'nbatch_standard':NBATCH_STANDARD}
+        env_config = {'num_env':1}
     elif alg=="naf":
         sample_config =  {"learning_rate": tune.sample_from(
                         lambda spec: np.random.choice([1e-2, 1e-3, 1e-4])),
