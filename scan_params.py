@@ -14,7 +14,7 @@ given a set of parameters, runs all algorithms with the optimal hyperparameters
 runs them multiple times, preferably on different clusters (so with LLsub then)
 saves the exp_name. might want to do using LLsub
 """
-def run_action_noise_experiment(num_samples, param_set, exp_name, env_name):
+def run_action_noise_experiment(num_samples, param_set, exp_name, env_name, LLcluster=True, smoke_test = False):
     #create experiment file based on params
     #run experiment using LLsub, probably alg by alg and params by params
     default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
@@ -27,30 +27,36 @@ def run_action_noise_experiment(num_samples, param_set, exp_name, env_name):
             params['action_noise_std'] = action_noise_std
             hyperparam_file = get_formatted_name(params)+"best_hyperparams.npy"
             if hyperparam_file not in os.listdir("hyperparams"):
-                print("Optimizing hyperparams", params)
-                optimize_hyperparams(params)
+                optimize_hyperparams(params, smoke_test = smoke_test)
             else:
                 print("Already found the hyperparams")
-            run_batch_job(params)
+            run_batch_job(params, LLcluster=LLcluster)
 
 """ precondition: hyperparameter optimization has already happened"""
-def run_batch_job(params):
+def run_batch_job(params, LLcluster=True):
     import os
     exp_name_with_params = get_formatted_name(params)
     np.save("params/"+exp_name_with_params+"_params.npy", params)
-    filename = write_batch_job(exp_name_with_params)
-    os.system("LLsub "+filename)
+    filename = write_batch_job(exp_name_with_params, LLcluster=LLcluster)
+    if LLcluster:
+        os.system("LLsub "+filename)
+    else:
+        os.system("./"+filename)
 
-def write_batch_job(name, num_processes=8):
+def write_batch_job(name, num_processes=8, LLcluster = True):
     filename = "batch_scripts/batch_job"+name+".sh"
     batch_file = open(filename, "w")
     batch_file.write("#!/bin/sh\n")
-    batch_file.write("#SBATCH -o "+ "batchlogs/"+name +".out-%j\n")
-    batch_file.write("#SBATCH -C "+ "opteron"+"\n")
-    batch_file.write("#SBATCH -a "+ "1-"+str(num_processes)+"\n")
-    batch_file.write("#SBATCH -s "+ " 2"+"\n")
-    batch_file.write("source /etc/profile\nmodule load cuda-9.0 \n")
-    batch_file.write("python trainable.py "+name)
+    if LLcluster:
+        batch_file.write("#SBATCH -o "+ "batchlogs/"+name +".out-%j\n")
+        batch_file.write("#SBATCH -C "+ "opteron"+"\n")
+        batch_file.write("#SBATCH -a "+ "1-"+str(num_processes)+"\n")
+        batch_file.write("#SBATCH -s "+ " 2"+"\n")
+        batch_file.write("source /etc/profile\nmodule load cuda-9.0 \n")
+        batch_file.write("python trainable.py "+name)
+    else:
+        for i in range(num_processes):
+            batch_file.write("python trainable.py "+name +" "+str(i)+" & \n")
     batch_file.close()
     return filename
     
@@ -64,11 +70,14 @@ def test_write_batch_job():
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
 env_name = "FetchPush-v1"
-exp_name="AL26c2"
+exp_name="AL26c"
 param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
-param_set['alg'] ='naf'
-#optimize_hyperparams(param_set, smoke_test = False)
+param_set['alg'] ='cma'
+
+#optimize_hyperparams(param_set, smoke_test = True)
 if __name__=="__main__":
     import sys
     algs = [sys.argv[1]]
-    run_action_noise_experiment(10, param_set, exp_name, env_name)
+    LLcluster="nocluster" not in sys.argv
+    print("LLcluster", LLcluster)
+    run_action_noise_experiment(10, param_set, exp_name, env_name, LLcluster=LLcluster)
