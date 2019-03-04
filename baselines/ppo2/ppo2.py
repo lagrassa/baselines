@@ -105,13 +105,18 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=3
 
     return model
 
-def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=64, ent_coef=0.0, lr=3e-4, reward_scale = None, exp_name=None,
+def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=None, ent_coef=0.0, lr=3e-4, reward_scale = None, exp_name=None,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
-            nupdates=None,
+            n_steps_per_episode=None,
+            n_episodes = 1,
+            nupdates=1,
+            batch_size=None,
             save_interval=0, load_path=None, model_fn=None, **network_kwargs):
 
     set_global_seeds(seed)
+    if nsteps is None:
+        nsteps = n_steps_per_episode
 
     if isinstance(lr, float): lr = constfn(lr)
     else: assert callable(lr)

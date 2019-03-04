@@ -20,7 +20,7 @@ def run_action_noise_experiment(num_samples, param_set, exp_name, env_name, LLcl
     default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
     for alg in algs:
         default_params['alg'] = alg
-        sample_space = {0,0.05, 0.1,0.2}
+        sample_space = {0}#,0.05, 0.1,0.2}
         #sample_space = {0.05,0.2}
         for action_noise_std in sample_space:
             params = default_params.copy()
@@ -30,7 +30,7 @@ def run_action_noise_experiment(num_samples, param_set, exp_name, env_name, LLcl
                 optimize_hyperparams(params, smoke_test = smoke_test)
             else:
                 print("Already found the hyperparams")
-            run_batch_job(params, LLcluster=LLcluster)
+            #run_batch_job(params, LLcluster=LLcluster)
 
 """ precondition: hyperparameter optimization has already happened"""
 def run_batch_job(params, LLcluster=True):
@@ -70,9 +70,8 @@ def test_write_batch_job():
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
 env_name = "FetchPush-v1"
-exp_name="AL26c"
+exp_name="AL27"
 param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
-param_set['alg'] ='cma'
 
 #optimize_hyperparams(param_set, smoke_test = True)
 if __name__=="__main__":
@@ -80,4 +79,8 @@ if __name__=="__main__":
     algs = [sys.argv[1]]
     LLcluster="nocluster" not in sys.argv
     print("LLcluster", LLcluster)
-    run_action_noise_experiment(10, param_set, exp_name, env_name, LLcluster=LLcluster)
+    if 'smoke' in sys.argv:
+        param_set['alg'] =algs[0]
+        optimize_hyperparams(param_set, smoke_test = True)
+    else:
+        run_action_noise_experiment(10, param_set, exp_name, env_name, LLcluster=LLcluster)

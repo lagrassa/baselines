@@ -71,8 +71,10 @@ def learn_setup(network, env,
           seed=None,
           total_timesteps=None,
           nb_epochs=None, # with default settings, perform 1M steps total
-          nb_epoch_cycles=20,
+          nb_epoch_cycles=None,
           nb_rollout_steps=100,
+          n_episodes=None,
+          n_steps_per_episode=None,
           reward_scale=1.0,
           render=False,
           render_eval=False,
@@ -95,6 +97,11 @@ def learn_setup(network, env,
           **network_kwargs):
 
     set_global_seeds(seed)
+    if nb_epoch_cycles is None:
+        nb_epoch_cycles = n_episodes 
+        nb_rollout_steps = n_steps_per_episode
+    else:
+        input("Not using automated interface? ")
 
     if total_timesteps is not None:
         assert nb_epochs is None
@@ -221,7 +228,6 @@ def learn_iter(epoch_episode_rewards=[],
                rank = None,
                render = None):
 
-
     for cycle in range(nb_epoch_cycles):
         # Perform rollouts.
         if nenvs > 1:
@@ -324,8 +330,6 @@ def learn_iter(epoch_episode_rewards=[],
     combined_stats['train/param_noise_distance'] = np.mean(epoch_adaptive_distances)
     combined_stats['total/duration'] = duration
     assert(np.mean(success_rates) >= 0)
-    if np.mean(success_rates) < 0:
-        import ipdb; ipdb.set_trace()
 
     combined_stats['rollout/success_rate'] = np.mean(success_rates)
     combined_stats['total/steps_per_second'] = float(t[0]) / float(duration)
