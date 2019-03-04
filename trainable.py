@@ -12,7 +12,6 @@ from baselines.common.vec_env.vec_normalize import VecNormalize
 #from gym.envs.registration import register
 GIT_DIR = "/home/lagrassa/git/"
 SAVE_DIR = "/home/lagrassa/git/baselines/"
-NBATCH_STANDARD = 50
 
 #register(
 #    id='StirEnv-v0',
@@ -22,7 +21,7 @@ NBATCH_STANDARD = 50
 
 def alg_to_module(alg):
     import sys
-    sys.path.append(GIT_DIR+"NAF-tensorflow")
+    sys.path.append(GIT_DIR+"NAF-tensorflow/src/")
     if alg == 'ppo2':
         import baselines.ppo2.ppo2 as ppo2
         return  ppo2
@@ -77,8 +76,9 @@ def make_class(params):
             reward_scale = 1.0
             if "reward_scale" in arg.keys():
                 reward_scale = arg["reward_scale"]
-            total_iters = 1e5
-            self.nupdates_total = int(round(total_iters/NBATCH_STANDARD))
+            total_iters = 1e6
+            self.nupdates_total = total_iters//(learn_params['n_episodes']*learn_params['n_steps_per_episode'])
+
             self.nupdates = 1
             env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
             if self.alg == "ppo2":
@@ -126,8 +126,6 @@ def pick_params(trial_list, exp_name="noexpname"):
 def alg_to_config(alg, env_name=None):
     num_env = 1
     if alg == "ppo2":
-        nsteps = NBATCH_STANDARD
-        nbatch = nsteps*num_env
         sample_config =  {"lr": tune.sample_from(
                         lambda spec: np.random.uniform(0.00001, 0.1)),
                     "vf_coef": tune.sample_from(
@@ -136,13 +134,16 @@ def alg_to_config(alg, env_name=None):
                         lambda spec: np.random.uniform(0.4, 0.6)),
                     "cliprange": tune.sample_from(
                         lambda spec: np.random.uniform(0.1, 0.3)),
+                    #"n_steps_per_episode": tune.sample_from(
+                    #    lambda spec: np.random.choice([64, 512, 1024, 2048])),
                     "reward_scale": tune.sample_from(
                         lambda spec: np.random.uniform(0.01, 10)),
                     "lam": tune.sample_from(
                         lambda spec: np.random.uniform(0.90, 0.99))}
         
         fixed_config = {'network':'mlp', 
-                        'nsteps':nsteps, 
+                        'n_episodes':1, 
+                        'n_steps_per_episode':50, 
                         'ent_coef':0.0,
                         'gamma':0.95,
                         'log_interval':10,
@@ -152,15 +153,17 @@ def alg_to_config(alg, env_name=None):
         env_config = {'num_env':1}
     elif alg == "ddpg":
         sample_config =  {"actor_lr": tune.sample_from(
-                        lambda spec: np.random.uniform(0.00001, 0.1)),
+                        lambda spec: np.random.uniform(1e-5, 0.01)),
+                    "batch_size": tune.sample_from(
+                        lambda spec: np.random.choice([64, 512, 1024, 2048])),
                     "critic_lr": tune.sample_from(
-                        lambda spec: np.random.uniform(0.00001, 0.1)),
+                        lambda spec: np.random.uniform(1e-5, 0.01)),
                     "reward_scale": tune.sample_from(
-                        lambda spec: np.random.uniform(0.01, 10)) }
+                        lambda spec: np.random.uniform(0.01, 100)) }
         
         fixed_config = {'network':'mlp', 
-                        'nb_epoch_cycles':NBATCH_STANDARD,
-                        'nb_rollout_steps':40,
+                        'n_episodes':20,
+                        'n_steps_per_episode':50,
                         'gamma':0.95}
         env_config = {'num_env':1}
 
@@ -177,26 +180,32 @@ def alg_to_config(alg, env_name=None):
         }
     elif alg == "cma":
         sample_config =  {"CMA_mu": tune.sample_from(
-                        lambda spec: int(np.random.uniform(3,NBATCH_STANDARD//2))),
+                        lambda spec: int(np.random.uniform(3,20))),
                     "CMA_cmean": tune.sample_from(
                         lambda spec: np.random.uniform(0.8, 1.2)),
                     "CMA_rankmu": tune.sample_from(
                         lambda spec: np.random.uniform(0.8, 1.2)),
+                    "popsize": tune.sample_from(
+                        lambda spec: int(np.random.uniform(60, 1000))),
                     "CMA_rankone": tune.sample_from(
                         lambda spec: np.random.uniform(0.8, 1.2))}
         
-        fixed_config = {'env_name':env_name, 
-                        'nbatch_standard':NBATCH_STANDARD}
+        fixed_config = {'env_name':env_name,
+                        'n_steps_per_episode':50,
+                        'n_episodes':1}
         env_config = {'num_env':1}
     elif alg=="naf":
         sample_config =  {"learning_rate": tune.sample_from(
                         lambda spec: np.random.choice([1e-2, 1e-3, 1e-4])),
                     "noise_scale": tune.sample_from(
                         lambda spec: np.random.choice([0.1, 0.3, 0.8, 1.0])),
+                    "batch_size": tune.sample_from(
+                        lambda spec: np.random.choice([25,50])),
                     "use_batch_norm": tune.sample_from(
                         lambda spec: np.random.choice([True, False]))}
         fixed_config = {'env_name':env_name,
-                'nbatch_standard':50} #NBATCH_STANDARD}
+                'n_steps_per_episode':50,
+                'n_episodes':1} #NBATCH_STANDARD}
         env_config = {'num_env':1
         }
     else:
@@ -211,9 +220,9 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
         num_cpu = 1
         NBATCH_STANDARD = 10
     else:
-        grace_period = 4
-        max_t = 1e5//50#NBATCH_STANDARD
-        num_samples = 30
+        grace_period = 50
+        max_t = 2e6 #this doesn't actually mean anything. Trainable takes care of killing processes when they go on for too long
+        num_samples = 50
         num_cpu = 8
 
     ahb = tune.schedulers.AsyncHyperBandScheduler(
@@ -241,15 +250,19 @@ scheduler=ahb, queue_trials=True, verbose=0, resume=False)
 """
 Precondition: hyperparameter optimization happened
 """
-def run_alg(params, iters=2):
+def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=None):
     exp_name = get_formatted_name(params)
-    hyperparams = np.load("hyperparams/"+exp_name+"best_hyperparams.npy").all()
+    if hyperparam_file is None:
+        hyperparam_file = "hyperparams/"+exp_name+"best_hyperparams.npy"
+    hyperparams = np.load(hyperparam_file).all()
+
     args = {"sample_config_best":hyperparams}
     trainable = make_class(params)(args)
     success_rates = []
     SAVE_INTERVAL=1
-    import os
-    exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
+    if LLcluster:
+        import os
+        exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(iters):
       res = trainable._train()
       success_rates.append(res['success_rate'])
@@ -275,8 +288,14 @@ def test_run_params():
 if __name__=="__main__":
     #res = tune.run_experiments(experiments=experiment_spec)
     import sys
-    exp_name = sys.argv[1] 
-    params= np.load("params/"+exp_name+"_params.npy").all()
+    if "manual" in sys.argv:
+        params = {'env_name':sys.argv[1], 'exp_name':sys.argv[2], 'obs_noise_std':float(sys.argv[3]), 'action_noise_std':float(sys.argv[4]), 'alg':sys.argv[5]}
+        print(params)
+        run_alg(params, iters=int(1e6), hyperparam_file = sys.argv[6], LLcluster=False, exp_number=int(sys.argv[7]))
+
+    else:
+        exp_name = sys.argv[1] 
+        params= np.load("params/"+exp_name+"_params.npy").all()
     run_alg(params, iters=int(1e6))
     #hyperparams_file = np.load(exp_name+"best_params.npy")
     ray.shutdown()
