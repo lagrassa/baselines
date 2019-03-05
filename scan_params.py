@@ -20,7 +20,7 @@ def run_action_noise_experiment(num_samples, param_set, exp_name, env_name, LLcl
     default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
     for alg in algs:
         default_params['alg'] = alg
-        sample_space = {0}#,0.05, 0.1,0.2}
+        sample_space = {0,0.05, 0.1,0.2}
         #sample_space = {0.05,0.2}
         for action_noise_std in sample_space:
             params = default_params.copy()
@@ -70,7 +70,7 @@ def test_write_batch_job():
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
 env_name = "FetchPush-v1"
-exp_name="AL27"
+exp_name="AL27b"
 param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
 
 #optimize_hyperparams(param_set, smoke_test = True)

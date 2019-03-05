@@ -199,7 +199,7 @@ def learn_setup(network, env,
         "render" : render}
     return local_variables
 
-def learn_iter(epoch_episode_rewards=[], 
+def learn_test(epoch_episode_rewards=[],
                epoch_episode_steps=[],
                episode_rewards_history=None,
                update = None,
@@ -213,7 +213,6 @@ def learn_iter(epoch_episode_rewards=[],
                nb_train_steps = 0,
                max_action=None,
                mean_rewards = [],
-               success_rates=[],
                epoch_episodes = [0],
                nb_epoch_cycles = None,
                env=None,
@@ -228,6 +227,41 @@ def learn_iter(epoch_episode_rewards=[],
                rank = None,
                render = None):
 
+    # Evaluate.
+    eval_obs = env.reset()
+    eval_action, eval_q, _, _ = agent.step(eval_obs, apply_noise=False, compute_Q=True)
+    eval_obs, eval_r, eval_done, eval_info = env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+    return eval_info['is_success']
+
+
+def learn_iter(epoch_episode_rewards=[], 
+               epoch_episode_steps=[],
+               episode_rewards_history=None,
+               update = None,
+               epoch_actions = [],
+               param_noise_adaption_interval=None,
+               eval_env=None,
+               start_time=None,
+               batch_size=None,
+               memory=None,
+               epoch_qs = [],
+               nb_train_steps = 0,
+               max_action=None,
+               mean_rewards = [],
+               epoch_episodes = [0],
+               nb_epoch_cycles = None,
+               env=None,
+               nb_rollout_steps = None,
+               agent = None,
+               t = None,
+               episode_reward = None,
+               episode_step = None,
+               episodes=None,
+               nenvs = None,
+               obs = None,
+               rank = None,
+               render = None):
+    successes = []
     for cycle in range(nb_epoch_cycles):
         # Perform rollouts.
         if nenvs > 1:
@@ -265,7 +299,7 @@ def learn_iter(epoch_episode_rewards=[],
                     epoch_episode_rewards.append(episode_reward[d])
                     episode_rewards_history.append(episode_reward[d])
                     epoch_episode_steps.append(episode_step[d])
-                    success_rates.append(int(episode_reward[d] >= 0))
+                    successes.append(int(episode_reward[d] >= 0))
                     episode_reward[d] = 0.
                     episode_step[d] = 0
                     epoch_episodes[0] += 1
@@ -290,25 +324,6 @@ def learn_iter(epoch_episode_rewards=[],
             epoch_actor_losses.append(al)
             agent.update_target_net()
 
-        # Evaluate.
-        eval_episode_rewards = []
-        eval_qs = []
-        if eval_env is not None:
-            nenvs_eval = eval_obs.shape[0]
-            eval_episode_reward = np.zeros(nenvs_eval, dtype = np.float32)
-            for t_rollout in range(nb_eval_steps):
-                eval_action, eval_q, _, _ = agent.step(eval_obs, apply_noise=False, compute_Q=True)
-                eval_obs, eval_r, eval_done, eval_info = eval_env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
-                if render_eval:
-                    eval_env.render()
-                eval_episode_reward += eval_r
-
-                eval_qs.append(eval_q)
-                for d in range(len(eval_done)):
-                    if eval_done[d]:
-                        eval_episode_rewards.append(eval_episode_reward[d])
-                        eval_episode_rewards_history.append(eval_episode_reward[d])
-                        eval_episode_reward[d] = 0.0
 
     if MPI is not None:
         mpi_size = MPI.COMM_WORLD.Get_size()
@@ -329,9 +344,9 @@ def learn_iter(epoch_episode_rewards=[],
     combined_stats['train/loss_critic'] = np.mean(epoch_critic_losses)
     combined_stats['train/param_noise_distance'] = np.mean(epoch_adaptive_distances)
     combined_stats['total/duration'] = duration
-    assert(np.mean(success_rates) >= 0)
+    assert(np.mean(successes) >= 0)
 
-    combined_stats['rollout/success_rate'] = np.mean(success_rates)
+    combined_stats['rollout/success_rate'] = np.mean(successes)
     combined_stats['total/steps_per_second'] = float(t[0]) / float(duration)
     combined_stats['total/episodes'] = episodes
     combined_stats['rollout/episodes'] = epoch_episodes[0]
@@ -374,6 +389,5 @@ def learn_iter(epoch_episode_rewards=[],
         if eval_env and hasattr(eval_env, 'get_state'):
             with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
                 pickle.dump(eval_env.get_state(), f)
-    return None, np.mean(success_rates)
-
+    return None, np.mean(successes)
 

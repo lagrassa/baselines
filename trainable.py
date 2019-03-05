@@ -112,6 +112,21 @@ def make_class(params):
 
         def _restore(self):
             pass
+        '''
+        use current model in evaluation for n_test_rollouts
+        '''
+        def _test(self, n_test_rollouts=50):
+            self.test_local_variables = self.local_variables.copy()
+            self.test_local_variables['n_episodes'] = 1
+            if self.alg == "cma":
+                self.test_local_variables['n_episodes'] = 2
+            self.test_local_variables['n_steps_per_iter'] = 50
+            test_success_rates = []
+            for i in range(n_test_rollouts):
+                success_rate = self.alg_module.learn_test(**self.test_local_variables)
+                test_success_rates.append(success_rate)
+            return {'success_rate':success_rate}
+            
     return TrainableClass
 
 def pick_params(trial_list, exp_name="noexpname"):
@@ -185,14 +200,13 @@ def alg_to_config(alg, env_name=None):
                         lambda spec: np.random.uniform(0.8, 1.2)),
                     "CMA_rankmu": tune.sample_from(
                         lambda spec: np.random.uniform(0.8, 1.2)),
-                    "popsize": tune.sample_from(
+                    "n_episodes": tune.sample_from(
                         lambda spec: int(np.random.uniform(60, 1000))),
                     "CMA_rankone": tune.sample_from(
                         lambda spec: np.random.uniform(0.8, 1.2))}
         
         fixed_config = {'env_name':env_name,
-                        'n_steps_per_episode':50,
-                        'n_episodes':1}
+                        'n_steps_per_episode':50}
         env_config = {'num_env':1}
     elif alg=="naf":
         sample_config =  {"learning_rate": tune.sample_from(
@@ -204,8 +218,8 @@ def alg_to_config(alg, env_name=None):
                     "use_batch_norm": tune.sample_from(
                         lambda spec: np.random.choice([True, False]))}
         fixed_config = {'env_name':env_name,
-                'n_steps_per_episode':50,
-                'n_episodes':1} #NBATCH_STANDARD}
+                'n_episodes':20,
+                'n_steps_per_episode':50}  #NBATCH_STANDARD}
         env_config = {'num_env':1
         }
     else:
@@ -246,7 +260,7 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
                "config": alg_to_config(params['alg'])[0], #just the tuneable ones
             }
         },
-scheduler=ahb, queue_trials=True, verbose=0, resume=False)
+scheduler=ahb, queue_trials=True, verbose=1, resume=False)
 """
 Precondition: hyperparameter optimization happened
 """
@@ -258,16 +272,21 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
 
     args = {"sample_config_best":hyperparams}
     trainable = make_class(params)(args)
-    success_rates = []
+    train_success_rates = []
+    test_success_rates = []
     SAVE_INTERVAL=1
     if LLcluster:
         import os
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(iters):
-      res = trainable._train()
-      success_rates.append(res['success_rate'])
+      train_res = trainable._train()
+      train_success_rates.append(train_res['success_rate'])
+      test_res = trainable._test()
+      test_success_rates.append(test_res['success_rate'])
+
       if i % SAVE_INTERVAL == 0:
-          np.save("run_results/"+exp_name+"success_rates_"+str(exp_number)+".npy", success_rates)
+          np.save("run_results/"+exp_name+"train_success_rates_"+str(exp_number)+".npy", train_success_rates)
+          np.save("run_results/"+exp_name+"test_success_rates_"+str(exp_number)+".npy", test_success_rates)
 
     #TODO call of the functions
     #get the env_id for logging

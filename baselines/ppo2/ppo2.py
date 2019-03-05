@@ -179,8 +179,10 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
                        'nupdates':nupdates          
                       }
     return local_variables
+def learn_test(**kwargs):
+    return learn_iter(**kwargs)[1]
 
-def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None):
+def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
 
     assert nbatch % nminibatches == 0
     # Start timer
@@ -237,7 +239,7 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     # Calculate the fps (frame per second)
     fps = int(nbatch / (tnow - tstart))
     try:
-        success_rate = safemean([epinfo['is_success'] for epinfo in epinfobuf])
+        success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
         mean_reward = safemean([epinfo['r'] for epinfo in epinfobuf])
     except:
         import ipdb; ipdb.set_trace()
@@ -273,6 +275,5 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
 
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
-    import ipdb; ipdb.set_trace()
 
 
