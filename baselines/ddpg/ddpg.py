@@ -219,6 +219,8 @@ def learn_test(epoch_episode_rewards=[],
                nb_rollout_steps = None,
                agent = None,
                t = None,
+               n_episodes=None,
+               n_steps_per_iter=None,
                episode_reward = None,
                episode_step = None,
                episodes=None,
@@ -228,9 +230,13 @@ def learn_test(epoch_episode_rewards=[],
                render = None):
 
     # Evaluate.
+    
     eval_obs = env.reset()
-    eval_action, eval_q, _, _ = agent.step(eval_obs, apply_noise=False, compute_Q=True)
-    eval_obs, eval_r, eval_done, eval_info = env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+    for i in range(n_steps_per_iter):
+        eval_action, eval_q, _, _ = agent.step(eval_obs, apply_noise=False, compute_Q=True)
+        eval_obs, eval_r, eval_done, eval_info = env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+    if isinstance(eval_info, list):
+        eval_info = eval_info[0]
     return eval_info['is_success']
 
 
