@@ -12,8 +12,8 @@ print("7")
 from baselines.common.vec_env.vec_normalize import VecNormalize
 print("ending imports")
 #from gym.envs.registration import register
-GIT_DIR = "/home/gridsan/alagrassa/git/"
-SAVE_DIR = "/home/gridsan/alagrassa/git/baselines/"
+GIT_DIR = "/home/lagrassa/git/"
+SAVE_DIR = "/home/lagrassa/git/baselines/"
 
 #register(
 #    id='StirEnv-v0',
@@ -265,7 +265,7 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
                "config": alg_to_config(params['alg'])[0], #just the tuneable ones
             }
         },
-scheduler=ahb, queue_trials=True, verbose=0, resume=False)
+scheduler=ahb, queue_trials=True, verbose=0)
 """
 Precondition: hyperparameter optimization happened
 """
@@ -288,15 +288,16 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(int(iters)):
         print("training iter", i)
+        import ipdb; ipdb.set_trace()
         train_res = trainable._train()
         train_success_rates.append(train_res['success_rate'])
         test_res = trainable._test()
         print("success rate test", test_res)
         test_success_rates.append(test_res['success_rate'])
 
-    if i % SAVE_INTERVAL == 0:
-        np.save("run_results/"+exp_name+"train_success_rates_"+str(exp_number)+".npy", train_success_rates)
-        np.save("run_results/"+exp_name+"test_success_rates_"+str(exp_number)+".npy", test_success_rates)
+        if i % SAVE_INTERVAL == 0:
+            np.save("run_results/"+exp_name+"train_success_rates_"+str(exp_number)+".npy", train_success_rates)
+            np.save("run_results/"+exp_name+"test_success_rates_"+str(exp_number)+".npy", test_success_rates)
 
     #TODO call of the functions
     #get the env_id for logging
