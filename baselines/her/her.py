@@ -21,6 +21,7 @@ def mpi_average(value):
 
 def train(*, rollout_worker=None, policy=None, evaluator=None, rank=None, nupdates=None,
                save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=10, n_batches=40, policy_save_interval=None, demo_file=None, logger=None, **kwargs):
+    import ipdb; ipdb.set_trace()
     rank = MPI.COMM_WORLD.Get_rank()
 
     if save_path:
@@ -209,6 +210,24 @@ def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nup
     #if rank != 0:
     #    assert local_uniform[0] != root_uniform[0]
     return None, success_rate
+def learn_test(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,n_episodes=None, n_steps_per_iter=None,
+               save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=None, n_batches=None, policy_save_interval=None, demo_file=None):
+
+    # test
+    evaluator.clear_history()
+    for _ in range(n_episodes):
+        evaluator.generate_rollouts()
+
+    # save the policy if it's better than the previous ones
+    success_rate = mpi_average(evaluator.current_success_rate())
+
+    # make sure that different threads have different seeds
+    local_uniform = np.random.uniform(size=(1,))
+    root_uniform = local_uniform.copy()
+    MPI.COMM_WORLD.Bcast(root_uniform, root=0)
+    #if rank != 0:
+    #    assert local_uniform[0] != root_uniform[0]
+    return success_rate
 
 
 
