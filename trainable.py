@@ -84,7 +84,7 @@ def make_class(params):
             reward_scale = 1.0
             if "reward_scale" in arg.keys():
                 reward_scale = arg["reward_scale"]
-            alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma':135, 'her':1e6}
+            alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma'1e5, 'her':1e6}
             total_iters = alg_to_iters[self.alg]
             self.nupdates_total = total_iters//(learn_params['n_episodes'])
             print("Total number updates is", self.nupdates_total)
@@ -104,17 +104,19 @@ def make_class(params):
             self.local_variables['update'] = self.nupdates
             if self.nupdates % 10 == 0:
                 print("nupdates", self.alg, self.nupdates)
-            _, success_rate = self.alg_module.learn_iter(**self.local_variables)
+            self.alg_module.learn_iter(**self.local_variables)
+            test_success_rate = self._test(n_test_rollouts=25)['success_rate']
             self.lock.acquire()
-            if success_rate > self.best_success_rate:
-                self.best_success_rates.append(success_rate)
-                self.best_success_rate = success_rate
+            if test_success_rate > self.best_success_rate:
+                self.best_success_rates.append(test_success_rate)
+                self.best_success_rate = test_success_rate
+                print("New best success rate of ", test_success_rate)
                 np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"best_params_so_far.npy", self.sample_config_bound)
                 np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"_best_success_rates.npy", self.best_success_rates)
             self.lock.release()
 
             self.nupdates += 1 
-            return {'done':self.nupdates > self.nupdates_total or success_rate > 0.4, 'success_rate':success_rate}
+            return {'done':self.nupdates > self.nupdates_total or test_success_rate > 0.6, 'success_rate':test_success_rate}
 
         def _save(self, state):
             return {}
@@ -124,7 +126,7 @@ def make_class(params):
         '''
         use current model in evaluation for n_test_rollouts
         '''
-        def _test(self, n_test_rollouts=20):
+        def _test(self, n_test_rollouts=15):
             self.test_local_variables = self.local_variables.copy()
             self.test_local_variables['n_episodes'] = 1
             if self.alg == "cma":
