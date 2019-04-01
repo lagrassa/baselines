@@ -19,9 +19,8 @@ def mpi_average(value):
     return mpi_moments(np.array(value))[0]
 
 
-def train(*, policy, rollout_worker, evaluator,
-          n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, **kwargs):
+def train(*, rollout_worker=None, policy=None, evaluator=None, rank=None, nupdates=None,
+               save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=10, n_batches=40, policy_save_interval=None, demo_file=None, logger=None, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     if save_path:
@@ -33,58 +32,19 @@ def train(*, policy, rollout_worker, evaluator,
     best_success_rate = -1
 
     if policy.bc_loss == 1: policy.init_demo_buffer(demo_file) #initialize demo buffer if training with demonstrations
-
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
     for epoch in range(n_epochs):
-        # train
-        rollout_worker.clear_history()
-        for _ in range(n_cycles):
-            episode = rollout_worker.generate_rollouts()
-            policy.store_episode(episode)
-            for _ in range(n_batches):
-                policy.train()
-            policy.update_target_net()
-
-        # test
-        evaluator.clear_history()
-        for _ in range(n_test_rollouts):
-            evaluator.generate_rollouts()
-
-        # record logs
-        logger.record_tabular('epoch', epoch)
-        for key, val in evaluator.logs('test'):
-            logger.record_tabular(key, mpi_average(val))
-        for key, val in rollout_worker.logs('train'):
-            logger.record_tabular(key, mpi_average(val))
-        for key, val in policy.logs():
-            logger.record_tabular(key, mpi_average(val))
-
-        if rank == 0:
-            logger.dump_tabular()
-
-        # save the policy if it's better than the previous ones
-        success_rate = mpi_average(evaluator.current_success_rate())
-        if rank == 0 and success_rate >= best_success_rate and save_path:
-            best_success_rate = success_rate
-            logger.info('New best success rate: {}. Saving policy to {} ...'.format(best_success_rate, best_policy_path))
-            evaluator.save_policy(best_policy_path)
-            evaluator.save_policy(latest_policy_path)
-        if rank == 0 and policy_save_interval > 0 and epoch % policy_save_interval == 0 and save_path:
-            policy_path = periodic_policy_path.format(epoch)
-            logger.info('Saving periodic policy to {} ...'.format(policy_path))
-            evaluator.save_policy(policy_path)
-
-        # make sure that different threads have different seeds
-        local_uniform = np.random.uniform(size=(1,))
-        root_uniform = local_uniform.copy()
-        MPI.COMM_WORLD.Bcast(root_uniform, root=0)
-        if rank != 0:
-            assert local_uniform[0] != root_uniform[0]
+        learn_iter(
+        save_path=save_path, policy=policy, rollout_worker=rollout_worker,
+        logger=logger,
+        evaluator=evaluator, n_epochs=n_epochs,
+          n_cycles=n_cycles,  n_test_rollouts=n_test_rollouts, n_batches=n_batches,
+        policy_save_interval=policy_save_interval, demo_file=demo_file)
 
     return policy
 
 
-def learn(*, network, env, total_timesteps,
+def learn(network, env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
@@ -96,7 +56,29 @@ def learn(*, network, env, total_timesteps,
     save_path=None,
     **kwargs
 ):
+    local_variables = learn_setup(network, env, total_timesteps=total_timesteps, seed=seed, eval_env=eval_env, replay_strategy=replay_strategy, policy_save_interval=policy_save_interval, clip_return=clip_return, demo_file=demo_file, override_params=override_params, load_path=load_path, n_cycles = 10, n_batches =40, n_test_rollouts = 5,save_path=save_path, **kwargs)
+    
 
+    res =  train(**local_variables)
+
+def learn_setup(network, env, total_timesteps=None,
+    seed=None,
+    eval_env=None,
+    replay_strategy='future',
+    policy_save_interval=5,
+    n_steps_per_episode=None,
+    clip_return=True,
+    demo_file=None,
+    n_cycles=None,
+    n_batches=None,
+    override_params=None,
+    load_path=None,
+    n_steps_per_iter = None,
+    n_episodes=None,
+    n_test_rollouts=None,
+    save_path=None,
+    **kwargs
+):
     override_params = override_params or {}
     if MPI is not None:
         rank = MPI.COMM_WORLD.Get_rank()
@@ -108,6 +90,8 @@ def learn(*, network, env, total_timesteps,
 
     # Prepare params.
     params = config.DEFAULT_PARAMS
+    if n_steps_per_episode is not None:
+        params['T'] = n_steps_per_episode
     env_name = env.specs[0].id
     params['env_name'] = env_name
     params['replay_strategy'] = replay_strategy
@@ -167,14 +151,65 @@ def learn(*, network, env, total_timesteps,
     rollout_worker = RolloutWorker(env, policy, dims, logger, monitor=True, **rollout_params)
     evaluator = RolloutWorker(eval_env, policy, dims, logger, **eval_params)
 
-    n_cycles = params['n_cycles']
-    n_epochs = total_timesteps // n_cycles // rollout_worker.T // rollout_worker.rollout_batch_size
+    #n_epochs = total_timesteps // n_cycles // rollout_worker.T // rollout_worker.rollout_batch_size
+    local_variables = {'rollout_worker':rollout_worker, 
+                       'n_cycles':n_cycles,
+                       'n_epochs':10000,
+                       'n_batches':n_batches,
+                       'n_test_rollouts':n_test_rollouts,
+                       'policy':policy,
+                       'evaluator':evaluator,
+                       'logger':logger}
+    return local_variables
+def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,
+               save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=None, n_batches=None, policy_save_interval=None, demo_file=None):
 
-    return train(
-        save_path=save_path, policy=policy, rollout_worker=rollout_worker,
-        evaluator=evaluator, n_epochs=n_epochs, n_test_rollouts=params['n_test_rollouts'],
-        n_cycles=params['n_cycles'], n_batches=params['n_batches'],
-        policy_save_interval=policy_save_interval, demo_file=demo_file)
+    # train
+    epoch = nupdates
+    rollout_worker.clear_history()
+    for _ in range(n_cycles):
+        episode = rollout_worker.generate_rollouts()
+        policy.store_episode(episode)
+        for _ in range(n_batches):
+            policy.train()
+        policy.update_target_net()
+
+    # test
+    evaluator.clear_history()
+    for _ in range(n_test_rollouts):
+        evaluator.generate_rollouts()
+
+    # record logs
+    logger.record_tabular('epoch', epoch)
+    for key, val in evaluator.logs('test'):
+        logger.record_tabular(key, mpi_average(val))
+    for key, val in rollout_worker.logs('train'):
+        logger.record_tabular(key, mpi_average(val))
+    for key, val in policy.logs():
+        logger.record_tabular(key, mpi_average(val))
+
+    logger.dump_tabular()
+
+    # save the policy if it's better than the previous ones
+    success_rate = mpi_average(evaluator.current_success_rate())
+    if rank == 0 and success_rate >= best_success_rate and save_path:
+        best_success_rate = success_rate
+        logger.info('New best success rate: {}. Saving policy to {} ...'.format(best_success_rate, best_policy_path))
+        evaluator.save_policy(best_policy_path)
+        evaluator.save_policy(latest_policy_path)
+    if rank == 0 and policy_save_interval > 0 and epoch % policy_save_interval == 0 and save_path:
+        policy_path = periodic_policy_path.format(epoch)
+        logger.info('Saving periodic policy to {} ...'.format(policy_path))
+        evaluator.save_policy(policy_path)
+
+    # make sure that different threads have different seeds
+    local_uniform = np.random.uniform(size=(1,))
+    root_uniform = local_uniform.copy()
+    MPI.COMM_WORLD.Bcast(root_uniform, root=0)
+    #if rank != 0:
+    #    assert local_uniform[0] != root_uniform[0]
+    return None, success_rate
+
 
 
 @click.command()
