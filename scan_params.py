@@ -2,7 +2,7 @@ from trainable import best_hyperparams_for_config
 import numpy as np
 import os
 from helper import get_formatted_name
-env_name = "FetchPush-v1"
+env_name = "FetchReach-v1"
 algs = ["naf"]
 def optimize_hyperparams(params, smoke_test = False):
     for alg in algs:
@@ -81,6 +81,7 @@ if __name__=="__main__":
     print("LLcluster", LLcluster)
     if 'smoke' in sys.argv:
         param_set['alg'] =algs[0]
-        optimize_hyperparams(param_set, smoke_test = True)
+        #optimize_hyperparams(param_set, smoke_test = True)
+        run_action_noise_experiment(10, param_set, exp_name, env_name, LLcluster=False, smoke_test = True)
     else:
         run_action_noise_experiment(10, param_set, exp_name, env_name, LLcluster=LLcluster)

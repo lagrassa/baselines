@@ -1,4 +1,5 @@
 import threading
+import os
 from helper import get_formatted_name
 import json
 import numpy as np
@@ -12,8 +13,8 @@ print("7")
 from baselines.common.vec_env.vec_normalize import VecNormalize
 print("ending imports")
 #from gym.envs.registration import register
-GIT_DIR = "/home/lagrassa/git/"
-SAVE_DIR = "/home/lagrassa/git/baselines/"
+GIT_DIR = os.environ["HOME"]+"/git/"
+SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
 
 #register(
 #    id='StirEnv-v0',
@@ -42,6 +43,9 @@ def alg_to_module(alg):
     elif alg == "ddpg":
         import baselines.ddpg.ddpg as ddpg
         return ddpg
+    elif alg == "her":
+        import baselines.her.her as her
+        return her
 
 
 
@@ -80,7 +84,7 @@ def make_class(params):
             reward_scale = 1.0
             if "reward_scale" in arg.keys():
                 reward_scale = arg["reward_scale"]
-            alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma':135}
+            alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma':135, 'her':1e6}
             total_iters = alg_to_iters[self.alg]
             self.nupdates_total = total_iters//(learn_params['n_episodes'])
             print("Total number updates is", self.nupdates_total)
@@ -227,6 +231,18 @@ def alg_to_config(alg, env_name=None):
                 'n_steps_per_episode':50}  #NBATCH_STANDARD}
         env_config = {'num_env':1
         }
+    elif alg=="her":
+        sample_config =  {"seed": tune.sample_from(
+                        lambda spec: np.random.choice([1, 5, 17]))}
+        fixed_config = {'network':'mlp',
+                'policy_save_interval':20,
+                'n_cycles':10,
+                'n_batches':10,
+                'n_test_rollouts':5,
+                'n_steps_per_episode':100}  #NBATCH_STANDARD}
+        fixed_config['n_episodes'] = fixed_config['n_cycles']*fixed_config["n_batches"]*fixed_config["n_test_rollouts"]
+        env_config = {'num_env':1
+        }
     else:
         raise ValueError("Algorithm not supported")
     return sample_config, fixed_config, env_config
@@ -284,7 +300,6 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
     test_success_rates = []
     SAVE_INTERVAL=10
     if LLcluster and exp_number is None:
-        import os
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(int(iters)):
         print("training iter", i)
@@ -320,7 +335,7 @@ if __name__=="__main__":
     #res = tune.run_experiments(experiments=experiment_spec)
     print("running trainable.py")
     import sys
-    alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma':135}
+    alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma':135, 'her':1e6}
     if "manual" in sys.argv:
         params = {'env_name':sys.argv[1], 'exp_name':sys.argv[2], 'obs_noise_std':float(sys.argv[3]), 'action_noise_std':float(sys.argv[4]), 'alg':sys.argv[5]}
         print(params)
