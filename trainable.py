@@ -1,4 +1,5 @@
 import threading
+import os
 from helper import get_formatted_name
 import json
 import numpy as np
@@ -12,8 +13,8 @@ print("7")
 from baselines.common.vec_env.vec_normalize import VecNormalize
 print("ending imports")
 #from gym.envs.registration import register
-GIT_DIR = "/home/gridsan/alagrassa/git/"
-SAVE_DIR = "/home/gridsan/alagrassa/git/baselines/"
+GIT_DIR = os.environ["HOME"]+"/git/"
+SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
 
 #register(
 #    id='StirEnv-v0',
@@ -42,6 +43,9 @@ def alg_to_module(alg):
     elif alg == "ddpg":
         import baselines.ddpg.ddpg as ddpg
         return ddpg
+    elif alg == "her":
+        import baselines.her.her as her
+        return her
 
 
 
@@ -80,7 +84,7 @@ def make_class(params):
             reward_scale = 1.0
             if "reward_scale" in arg.keys():
                 reward_scale = arg["reward_scale"]
-            alg_to_iters = {'ppo2':1e6, 'ddpg':1e7, 'naf':1000, 'cma':1e6}
+            alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma'1e5, 'her':1e6}
             total_iters = alg_to_iters[self.alg]
             self.nupdates_total = total_iters//(learn_params['n_episodes'])
             print("Total number updates is", self.nupdates_total)
@@ -229,6 +233,18 @@ def alg_to_config(alg, env_name=None):
                 'n_steps_per_episode':50}  #NBATCH_STANDARD}
         env_config = {'num_env':1
         }
+    elif alg=="her":
+        sample_config =  {"seed": tune.sample_from(
+                        lambda spec: np.random.choice([1, 5, 17]))}
+        fixed_config = {'network':'mlp',
+                'policy_save_interval':20,
+                'n_cycles':10,
+                'n_batches':10,
+                'n_test_rollouts':5,
+                'n_steps_per_episode':100}  #NBATCH_STANDARD}
+        fixed_config['n_episodes'] = fixed_config['n_cycles']*fixed_config["n_batches"]*fixed_config["n_test_rollouts"]
+        env_config = {'num_env':1
+        }
     else:
         raise ValueError("Algorithm not supported")
     return sample_config, fixed_config, env_config
@@ -267,7 +283,7 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
                "config": alg_to_config(params['alg'])[0], #just the tuneable ones
             }
         },
-scheduler=ahb, queue_trials=True, verbose=0, resume=False)
+scheduler=ahb, queue_trials=True, verbose=0)
 """
 Precondition: hyperparameter optimization happened
 """
@@ -286,20 +302,19 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
     test_success_rates = []
     SAVE_INTERVAL=10
     if LLcluster and exp_number is None:
-        import os
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(int(iters)):
         print("training iter", i)
+        import ipdb; ipdb.set_trace()
         train_res = trainable._train()
         train_success_rates.append(train_res['success_rate'])
         test_res = trainable._test()
         print("success rate test", test_res)
         test_success_rates.append(test_res['success_rate'])
 
-    if i % SAVE_INTERVAL == 0:
-        import ipdb; ipdb.set_trace()
-        np.save("run_results/"+exp_name+"train_success_rates_"+str(exp_number)+".npy", train_success_rates)
-        np.save("run_results/"+exp_name+"test_success_rates_"+str(exp_number)+".npy", test_success_rates)
+        if i % SAVE_INTERVAL == 0:
+            np.save("run_results/"+exp_name+"train_success_rates_"+str(exp_number)+".npy", train_success_rates)
+            np.save("run_results/"+exp_name+"test_success_rates_"+str(exp_number)+".npy", test_success_rates)
 
     #TODO call of the functions
     #get the env_id for logging
@@ -322,7 +337,7 @@ if __name__=="__main__":
     #res = tune.run_experiments(experiments=experiment_spec)
     print("running trainable.py")
     import sys
-    alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma':135}
+    alg_to_iters = {'ppo2':1e7, 'ddpg':1e7, 'naf':1000, 'cma':135, 'her':1e6}
     if "manual" in sys.argv:
         params = {'env_name':sys.argv[1], 'exp_name':sys.argv[2], 'obs_noise_std':float(sys.argv[3]), 'action_noise_std':float(sys.argv[4]), 'alg':sys.argv[5]}
         print(params)
