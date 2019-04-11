@@ -2,6 +2,7 @@
 Helpers for scripts like run_atari.py.
 """
 
+print("Importing cmd_util module")
 import os
 try:
     from mpi4py import MPI
@@ -9,14 +10,23 @@ except ImportError:
     MPI = None
 
 import gym
+print("Imported gym")
 from gym.wrappers import FlattenDictWrapper
+print("I1")
 from baselines import logger
+print("I2")
 from baselines.bench import Monitor
+print("Imported bench")
 from baselines.common import set_global_seeds
+print("1")
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
+print("2")
 from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
+print("3")
 from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
+print("4")
 from baselines.common import retro_wrappers
+print("cmd_util imported all modules")
 
 def make_vec_env(env_id, env_type, num_env, seed,
                  wrapper_kwargs=None,
@@ -24,6 +34,7 @@ def make_vec_env(env_id, env_type, num_env, seed,
                  reward_scale=1.0,
                  flatten_dict_observations=True,
                  action_noise_std=0,
+                 distance_threshold=None,
                  obs_noise_std=0,
                  gamestate=None):
     """
@@ -41,6 +52,7 @@ def make_vec_env(env_id, env_type, num_env, seed,
             reward_scale=reward_scale,
             gamestate=gamestate,
             flatten_dict_observations=flatten_dict_observations,
+            distance_threshold=distance_threshold,
             wrapper_kwargs=wrapper_kwargs
         )
 
@@ -49,10 +61,10 @@ def make_vec_env(env_id, env_type, num_env, seed,
         assert(False, "Not supported yet")
         return SubprocVecEnv([make_thunk(i + start_index) for i in range(num_env)])
     else:
-        return DummyVecEnv([make_thunk(start_index)],action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
+        return DummyVecEnv([make_thunk(start_index)],action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=distance_threshold)
 
 
-def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate=None, flatten_dict_observations=True, wrapper_kwargs=None):
+def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, distance_threshold=None, gamestate=None, flatten_dict_observations=True, wrapper_kwargs=None):
     mpi_rank = MPI.COMM_WORLD.Get_rank() if MPI else 0
     wrapper_kwargs = wrapper_kwargs or {}
     if env_type == 'atari':
@@ -62,7 +74,10 @@ def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate
         gamestate = gamestate or retro.State.DEFAULT
         env = retro_wrappers.make_retro(game=env_id, max_episode_steps=10000, use_restricted_actions=retro.Actions.DISCRETE, state=gamestate)
     else:
-        env = gym.make(env_id)
+        if distance_threshold is not None:
+            env = gym.make(env_id, distance_threshold=distance_threshold)
+        else:
+            env = gym.make(env_id)
 
     if flatten_dict_observations and isinstance(env.observation_space, gym.spaces.Dict):
         keys = env.observation_space.spaces.keys()
