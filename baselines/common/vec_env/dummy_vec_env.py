@@ -10,7 +10,7 @@ class DummyVecEnv(VecEnv):
     Useful when debugging and when num_env == 1 (in the latter case,
     avoids communication overhead)
     """
-    def __init__(self, env_fns, action_noise_std=0, obs_noise_std=0):
+    def __init__(self, env_fns, action_noise_std=0, obs_noise_std=0, distance_threshold=0.05):
         """
         Arguments:
 
@@ -19,6 +19,7 @@ class DummyVecEnv(VecEnv):
         self.envs = [fn() for fn in env_fns]
         self.action_noise_std = action_noise_std
         self.obs_noise_std = obs_noise_std
+        self.distance_threshold = distance_threshold
         env = self.envs[0]
         VecEnv.__init__(self, len(env_fns), env.observation_space, env.action_space)
         obs_space = env.observation_space
@@ -50,10 +51,13 @@ class DummyVecEnv(VecEnv):
             action = self.actions[e]
             if isinstance(self.envs[e].action_space, spaces.Discrete):
                 action = int(action)
-            noisy_action = action + np.random.normal(np.zeros(action.shape),self.action_noise_std)
+            if self.action_noise_std > 0:
+                noisy_action = action + np.random.normal(np.zeros(action.shape),self.action_noise_std)
+            else:
+                noisy_action = action
             obs, self.buf_rews[e], self.buf_dones[e], self.buf_infos[e] = self.envs[e].step(noisy_action)
             if isinstance(obs, dict):
-                obs['observation'] = obs['observation'] + np.random.normal(np.zeros(obs['observation'].shape),self.obs_noise_std)
+                obs['observation'] = obs['observation'] + obs['observation']*np.random.normal(np.zeros(obs['observation'].shape),self.obs_noise_std)
             else:
                 obs = obs + np.random.normal(np.zeros(obs.shape),self.obs_noise_std)
             if self.buf_dones[e]:
