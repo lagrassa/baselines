@@ -85,7 +85,7 @@ def make_class(params):
             if "reward_scale" in arg.keys():
                 reward_scale = arg["reward_scale"]
             total_iters = alg_to_iters[self.alg]
-            self.nupdates_total = total_iters//(learn_params['n_episodes'])
+            self.nupdates_total = total_iters//(learn_params['n_episodes']*learn_params["n_steps_per_episode"])
             self.nupdates = 1
             env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
             #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
@@ -103,12 +103,13 @@ def make_class(params):
             if self.nupdates % 3 == 0:
                 print("nupdates", self.alg, self.nupdates)
             if self.alg == "ppo2":
-                num_iters = 20#self.local_variables['n_episodes']
+                num_iters = 1#20#self.local_variables['n_episodes']
             else:
                 num_iters = 1
             for i in range(num_iters):
                 self.alg_module.learn_iter(**self.local_variables)
-            test_success_rate = self._test(n_test_rollouts=15)['success_rate']
+            #test_success_rate = self._test(n_test_rollouts=15)['success_rate']
+            test_success_rate = -0.17
             self.lock.acquire()
             if test_success_rate > self.best_success_rate:
                 self.best_success_rates.append(test_success_rate)
@@ -175,11 +176,12 @@ def alg_to_config(alg, env_name=None):
                     "lam": tune.sample_from(
                         lambda spec: np.random.uniform(0.90, 0.99))}
         
-        fixed_config = {'n_episodes':10, 
+        fixed_config = {'n_episodes':40, 
                         'n_steps_per_episode':50,#50, 
                         'gamma':0.99,
                         'log_interval':10,
-                        'nminibatches':4,
+                        'nminibatches':5,
+                        'total_timesteps':1e6,
                         'noptepochs':10,
                         'save_interval':10}
         env_config = {'num_env':1}
@@ -314,9 +316,7 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
     if LLcluster and exp_number is None:
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(int(iters)):
-        print("training iter", i)
         test_res = trainable._train()
-        print("success rate test", test_res)
         test_success_rates.append(test_res['success_rate'])
 
         if i % SAVE_INTERVAL == 0:
@@ -355,7 +355,9 @@ if __name__=="__main__":
     else:
         exp_name = sys.argv[1] 
         params= np.load("params/"+exp_name+"_params.npy").all()
+        params["nsteps"] = 2048
         alg = params['alg']
+        params['seed']=1
         n_episodes=alg_to_config(params["alg"])[1]['n_episodes']
         num_iters = alg_to_iters[alg]//n_episodes
         if len(sys.argv) > 2:
