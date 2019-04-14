@@ -12,8 +12,8 @@ from baselines.common.vec_env.vec_normalize import VecNormalize
 #from gym.envs.registration import register
 GIT_DIR = os.environ["HOME"]+"/git/"
 SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
-alg_to_iters = {'ppo2':1e6, 'ddpg':1e7, 'naf':1e6, 'cma':1e6, 'her':90000}
-#alg_to_iters = {'ppo2':800, 'ddpg':1e7, 'naf':80, 'cma':1e5, 'her':5000}
+train_alg_to_iters = {'ppo2':1e6, 'ddpg':1e7, 'naf':1e6, 'cma':1e6, 'her':90000}
+tune_alg_to_iters = {'ppo2':500, 'ddpg':1e7, 'naf':80, 'cma':1e5, 'her':5000}
 
 #register(
 #    id='StirEnv-v0',
@@ -73,9 +73,11 @@ def make_class(params):
                 sample_config_sample = {ky:arg[ky] for ky in sample_config.keys() }
                 sample_config_bound = sample_config_sample
                 learn_params = {**sample_config_sample, **fixed_config}
+                total_iters = train_alg_to_iters[self.alg]
             else:
                 learn_params = {**arg['sample_config_best'], **fixed_config}
                 sample_config_bound = arg['sample_config_best']
+                total_iters = tune_alg_to_iters[self.alg]
             self.sample_config_bound = sample_config_bound 
             action_noise_std = params['action_noise_std']
             obs_noise_std = params['obs_noise_std']
@@ -84,7 +86,6 @@ def make_class(params):
             reward_scale = 1.0
             if "reward_scale" in arg.keys():
                 reward_scale = arg["reward_scale"]
-            total_iters = alg_to_iters[self.alg]
             self.nupdates_total = total_iters//(learn_params['n_episodes']*learn_params["n_steps_per_episode"])
             self.nupdates = 1
             env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
@@ -108,8 +109,7 @@ def make_class(params):
                 num_iters = 1
             for i in range(num_iters):
                 self.alg_module.learn_iter(**self.local_variables)
-            #test_success_rate = self._test(n_test_rollouts=15)['success_rate']
-            test_success_rate = -0.17
+            test_success_rate = self._test(n_test_rollouts=15)['success_rate']
             self.lock.acquire()
             if test_success_rate > self.best_success_rate:
                 self.best_success_rates.append(test_success_rate)
@@ -349,7 +349,7 @@ if __name__=="__main__":
         #params['lr'] = 1e-3
         print(params)
         n_episodes=alg_to_config(params["alg"])[1]['n_episodes']
-        num_iters = alg_to_iters[params["alg"]]//n_episodes
+        num_iters = train_alg_to_iters[params["alg"]]//n_episodes
         run_alg(params, iters=int(num_iters), hyperparam_file = sys.argv[7], LLcluster=False, exp_number=int(sys.argv[8]))
 
     else:
@@ -359,7 +359,7 @@ if __name__=="__main__":
         alg = params['alg']
         params['seed']=1
         n_episodes=alg_to_config(params["alg"])[1]['n_episodes']
-        num_iters = alg_to_iters[alg]//n_episodes
+        num_iters = train_alg_to_iters[alg]//n_episodes
         if len(sys.argv) > 2:
             run_alg(params, iters=num_iters, exp_number = int(sys.argv[2]))
         else:
