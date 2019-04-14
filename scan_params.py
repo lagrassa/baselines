@@ -69,8 +69,8 @@ def test_write_batch_job():
     f.close()
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
-env_name = "FetchPush-v1"
-exp_name="AL38b"
+#env_name = "FetchPush-v1"
+exp_name="AL47"
 param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
 
 #optimize_hyperparams(param_set, smoke_test = True)
