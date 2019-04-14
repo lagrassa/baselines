@@ -2,7 +2,7 @@ from trainable import best_hyperparams_for_config
 import numpy as np
 import os
 from helper import get_formatted_name
-env_name = "FetchReach-v1"
+env_name = "FetchPush-v1"
 algs = ["naf"]
 def optimize_hyperparams(params, smoke_test = False):
     for alg in algs:
@@ -17,16 +17,17 @@ saves the exp_name. might want to do using LLsub
 def run_action_noise_experiment(num_samples, param_set, exp_name, env_name, LLcluster=True, smoke_test = False):
     #create experiment file based on params
     #run experiment using LLsub, probably alg by alg and params by params
-    default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
+    default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0, 'goal_radius':0.05}
     for alg in algs:
         default_params['alg'] = alg
-        sample_space = {0}
-        #sample_space = {0.05,0.2}
+        #sample_space = {0, 0.01, 0.1}
+        sample_space={0}
+        #sample_space = {0.01, 0.05, 0.08, 0.1}
         for action_noise_std in sample_space:
             params = default_params.copy()
             params['action_noise_std'] = action_noise_std
             hyperparam_file = get_formatted_name(params)+"best_hyperparams.npy"
-            if hyperparam_file not in os.listdir("hyperparams"):
+            if hyperparam_file not in os.listdir("hyperparams") or smoke_test:
                 optimize_hyperparams(params, smoke_test = smoke_test)
             else:
                 print("Already found the hyperparams")
@@ -43,7 +44,7 @@ def run_batch_job(params, LLcluster=True):
     else:
         os.system("./"+filename)
 
-def write_batch_job(name, num_processes=8, LLcluster = True):
+def write_batch_job(name, num_processes=3, LLcluster = True):
     filename = "batch_scripts/batch_job"+name+".sh"
     batch_file = open(filename, "w")
     batch_file.write("#!/bin/sh\n")
@@ -62,22 +63,23 @@ def write_batch_job(name, num_processes=8, LLcluster = True):
     
             
 def test_write_batch_job():
-    default_params = {'env_name':"Pendulum-v0", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'}
+    default_params = {'env_name':"Pendulum-v0", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf', 'goal_radius':0.05}
     write_batch_job(default_params)
-    f = open("batch_scripts/batch_job"+get_formatted_name(default_params)+".sh")
+    f = open("batch_scripts/batch_job/"+get_formatted_name(default_params)+".sh")
     print(f.read())
     f.close()
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
 env_name = "FetchPush-v1"
-exp_name="AL38b"
-param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0}
+exp_name="AL47"
+param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0, 'goal_radius':0.05}
 
 #optimize_hyperparams(param_set, smoke_test = True)
 if __name__=="__main__":
     import sys
     algs = [sys.argv[1]]
     LLcluster="nocluster" not in sys.argv
+    assert(LLcluster)
     print("LLcluster", LLcluster)
     if 'smoke' in sys.argv:
         param_set['alg'] =algs[0]
