@@ -19,6 +19,13 @@ def constfn(val):
         return val
     return f
 
+def learn_test(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
+    assert(nsteps > n_episodes)
+    obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
+    success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
+    return success_rate
+
+
 def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
 
     assert nbatch % nminibatches == 0

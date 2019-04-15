@@ -2,7 +2,6 @@
 Helpers for scripts like run_atari.py.
 """
 
-print("Importing cmd_util module")
 import os
 try:
     from mpi4py import MPI
@@ -10,23 +9,14 @@ except ImportError:
     MPI = None
 
 import gym
-print("Imported gym")
 from gym.wrappers import FlattenDictWrapper
-print("I1")
 from baselines import logger
-print("I2")
 from baselines.bench import Monitor
-print("Imported bench")
 from baselines.common import set_global_seeds
-print("1")
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
-print("2")
 from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
-print("3")
 from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
-print("4")
 from baselines.common import retro_wrappers
-print("cmd_util imported all modules")
 
 def make_vec_env(env_id, env_type, num_env, seed,
                  wrapper_kwargs=None,
