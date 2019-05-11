@@ -13,7 +13,8 @@ from baselines.common.vec_env.vec_normalize import VecNormalize
 GIT_DIR = os.environ["HOME"]+"/git/"
 SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
 train_alg_to_iters = {'ppo2':1e6, 'ddpg':1e7, 'naf':1e6, 'cma':1e6, 'her':90000}
-tune_alg_to_iters = {'ppo2':500, 'ddpg':1e7, 'naf':80, 'cma':1e5, 'her':5000}
+tune_alg_to_iters = {'ppo2':300, 'ddpg':600, 'naf':80, 'cma':300, 'her':5000}
+#tune_alg_to_iters = {'ppo2':800, 'ddpg':80, 'naf':80, 'cma':20, 'her':5000}
 
 #register(
 #    id='StirEnv-v0',
@@ -61,7 +62,6 @@ def make_class(params):
             self.best_success_rates = []
             self.best_success_rate = -np.inf
             self.alg_module = alg_to_module(self.alg)
-            print("setting up tf stuff")
             config = tf.ConfigProto(allow_soft_placement=True,
                                    intra_op_parallelism_threads=1,
                                    inter_op_parallelism_threads=1)
@@ -73,11 +73,11 @@ def make_class(params):
                 sample_config_sample = {ky:arg[ky] for ky in sample_config.keys() }
                 sample_config_bound = sample_config_sample
                 learn_params = {**sample_config_sample, **fixed_config}
-                total_iters = train_alg_to_iters[self.alg]
+                total_iters = tune_alg_to_iters[self.alg]
             else:
                 learn_params = {**arg['sample_config_best'], **fixed_config}
                 sample_config_bound = arg['sample_config_best']
-                total_iters = tune_alg_to_iters[self.alg]
+                total_iters = train_alg_to_iters[self.alg]
             self.sample_config_bound = sample_config_bound 
             action_noise_std = params['action_noise_std']
             obs_noise_std = params['obs_noise_std']
@@ -87,6 +87,7 @@ def make_class(params):
             if "reward_scale" in arg.keys():
                 reward_scale = arg["reward_scale"]
             self.nupdates_total = total_iters//(learn_params['n_episodes']*learn_params["n_steps_per_episode"])
+            print("total num updates", self.nupdates_total)
             self.nupdates = 1
             env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
             #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
@@ -101,27 +102,23 @@ def make_class(params):
 
         def _train(self):
             self.local_variables['update'] = self.nupdates
-            if self.nupdates % 3 == 0:
-                print("nupdates", self.alg, self.nupdates)
-            if self.alg == "ppo2":
-                num_iters = 1#20#self.local_variables['n_episodes']
-            else:
-                num_iters = 1
-            for i in range(num_iters):
-                self.alg_module.learn_iter(**self.local_variables)
-            test_success_rate = self._test(n_test_rollouts=15)['success_rate']
+            print("nupdates", self.alg, self.nupdates, " of ", self.nupdates_total)
+            _, _, infos = self.alg_module.learn_iter(**self.local_variables)
+            test_success_rate = self._test(n_test_rollouts=5)['success_rate']
+            print("test success", test_success_rate)
+            if np.isnan(test_success_rate):
+                import ipdb; ipdb.set_trace()
             self.lock.acquire()
             if test_success_rate > self.best_success_rate:
                 self.best_success_rates.append(test_success_rate)
                 self.best_success_rate = test_success_rate
-                print("New best success rate of ", test_success_rate)
                 if test_success_rate > 0.30:
                     np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"best_params_so_far.npy", self.sample_config_bound)
                     np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"_best_success_rates.npy", self.best_success_rates)
             self.lock.release()
 
             self.nupdates += 1 
-            return {'done':self.nupdates > self.nupdates_total or test_success_rate > 0.6, 'success_rate':test_success_rate}
+            return {'done':self.nupdates > self.nupdates_total or test_success_rate > 0.6, 'success_rate':test_success_rate, "infos":infos}
 
         def _save(self, state):
             return {}
@@ -131,12 +128,12 @@ def make_class(params):
         '''
         use current model in evaluation for n_test_rollouts
         '''
-        def _test(self, n_test_rollouts=15):
+        def _test(self, n_test_rollouts=8):
             self.test_local_variables = self.local_variables.copy()
             self.test_local_variables['n_episodes'] = 1
             if self.alg == "cma":
                 self.test_local_variables['n_episodes'] = 2
-            self.test_local_variables['n_steps_per_iter'] = 50
+            self.test_local_variables['n_steps_per_iter'] = 15
             self.test_local_variables['n_episodes'] = n_test_rollouts
             success_rate = self.alg_module.learn_test(**self.test_local_variables)
             return {'success_rate':success_rate}
@@ -176,29 +173,29 @@ def alg_to_config(alg, env_name=None):
                     "lam": tune.sample_from(
                         lambda spec: np.random.uniform(0.90, 0.99))}
         
-        fixed_config = {'n_episodes':40, 
+        fixed_config = {'n_episodes':40,#80 
                         'n_steps_per_episode':50,#50, 
                         'gamma':0.99,
                         'log_interval':10,
                         'nminibatches':5,
                         'total_timesteps':1e6,
                         'noptepochs':10,
-                        'save_interval':10}
+                        'save_interval':1000}
         env_config = {'num_env':1}
     elif alg == "ddpg":
         sample_config =  {"actor_lr": tune.sample_from(
-                        lambda spec: np.random.uniform(1e-5, 0.01)),
+                        lambda spec: np.random.choice([1e-5, 1e-4, 1e-3])),
                     "batch_size": tune.sample_from(
-                        lambda spec: np.random.choice([64, 512, 1024, 2048])),
+                        lambda spec: np.random.choice([4,8,16, 32, 64])),
                     "critic_lr": tune.sample_from(
-                        lambda spec: np.random.uniform(1e-5, 0.01)),
+                        lambda spec: np.random.choice([1e-5,1e-4,1e-3])),
                     "reward_scale": tune.sample_from(
-                        lambda spec: np.random.uniform(0.01, 100)) }
+                        lambda spec: np.random.choice([0.01,1,5,10])) }
         
         fixed_config = {'network':'mlp', 
-                        'n_episodes':200,
-                        'n_steps_per_episode':50,
-                        'gamma':0.95}
+                        'n_episodes':5,#200,
+                        'n_steps_per_episode':10,
+                        'gamma':0.99}
         env_config = {'num_env':1}
 
     elif alg == "mbrl":
@@ -224,7 +221,8 @@ def alg_to_config(alg, env_name=None):
         
         fixed_config = {'env_name':env_name,
                         'n_episodes':17,
-                        'n_steps_per_episode':50}
+                        "reward_threshold":0,
+                        'n_steps_per_episode':10}
         env_config = {'num_env':1}
     elif alg=="naf":
         sample_config =  {"learning_rate": tune.sample_from(
@@ -248,10 +246,10 @@ def alg_to_config(alg, env_name=None):
         sample_config =  {"seed": tune.sample_from(
                         lambda spec: np.random.choice([1, 5, 17, 24, 25, 14, 47]))}
         fixed_config = {'network':'mlp',
-                'policy_save_interval':20,
+                'policy_save_interval':200,
                 'n_cycles':10,#10,
-                'n_batches':40,
-                'n_test_rollouts':5,
+                'n_batches':40,#40,
+                'n_test_rollouts':5,#5
                 'n_steps_per_episode':50}  # better at 100 for some reason NBATCH_STANDARD}
         fixed_config['n_episodes'] = fixed_config['n_cycles']
         env_config = {'num_env':1
@@ -263,15 +261,15 @@ def alg_to_config(alg, env_name=None):
 def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, action_noise_std=0, params={}):
     if smoke_test:
         grace_period = 1
-        max_t = 10
+        max_t = 50
         num_samples = 1
         num_cpu = 1
         NBATCH_STANDARD = 10
     else:
         grace_period = 4
         max_t = 2e6 #this doesn't actually mean anything. Trainable takes care of killing processes when they go on for too long
-        num_samples = 10
-        num_cpu = 10
+        num_samples = 6#30
+        num_cpu = 15#10
 
     ahb = tune.schedulers.AsyncHyperBandScheduler(
         time_attr="training_iteration",
@@ -310,16 +308,26 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
     args["action_noise_std"] = params["action_noise_std"]
     args["goal_radius"] = params["goal_radius"]
     trainable = make_class(params)(args)
-    print("made class")
+    #print("made class")
+    info_data = {}
     test_success_rates = []
-    SAVE_INTERVAL=10
+    SAVE_INTERVAL=5
     if LLcluster and exp_number is None:
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(int(iters)):
         test_res = trainable._train()
         test_success_rates.append(test_res['success_rate'])
+        infos = test_res['infos']
+        for info in infos.keys():
+            if info in info_data.keys():
+               info_data[info].append(infos[info])
+            else:
+               info_data[info] = [infos[info]]
 
         if i % SAVE_INTERVAL == 0:
+            print(" last success rate", test_res["success_rate"])
+            for info in info_data.keys():
+                np.save("run_results/"+exp_name+info+"_"+str(exp_number)+".npy", info_data[info])
             np.save("run_results/"+exp_name+"test_success_rates_"+str(exp_number)+".npy", test_success_rates)
 
     #TODO call of the functions
@@ -355,7 +363,6 @@ if __name__=="__main__":
     else:
         exp_name = sys.argv[1] 
         params= np.load("params/"+exp_name+"_params.npy").all()
-        params["nsteps"] = 2048
         alg = params['alg']
         params['seed']=1
         n_episodes=alg_to_config(params["alg"])[1]['n_episodes']

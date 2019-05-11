@@ -53,6 +53,7 @@ class PolicyWithValue(object):
 
         # Calculate the neg log of our probability
         self.neglogp = self.pd.neglogp(self.action)
+        self.newmean = self.pd.mean
         self.sess = sess or tf.get_default_session()
 
         if estimate_q:
@@ -74,7 +75,7 @@ class PolicyWithValue(object):
 
         return sess.run(variables, feed_dict)
 
-    def step(self, observation, **extra_feed):
+    def step(self, observation, return_mean = False, **extra_feed):
         """
         Compute next action(s) given the observation(s)
 
@@ -89,11 +90,16 @@ class PolicyWithValue(object):
         -------
         (action, value estimate, next state, negative log likelihood of the action under current policy parameters) tuple
         """
-
-        a, v, state, neglogp = self._evaluate([self.action, self.vf, self.state, self.neglogp], observation, **extra_feed)
+        if return_mean:
+            a, v, state, neglogp, mean = self._evaluate([self.action, self.vf, self.state, self.neglogp, self.newmean], observation, **extra_feed)
+        else:
+            a, v, state, neglogp = self._evaluate([self.action, self.vf, self.state, self.neglogp], observation, **extra_feed)
         if state.size == 0:
             state = None
-        return a, v, state, neglogp
+        if return_mean:
+            return a, v, state, neglogp, mean
+        else:
+            return a, v, state, neglogp
 
     def value(self, ob, *args, **kwargs):
         """
@@ -149,7 +155,6 @@ def build_policy(env, policy_network, value_network=None,  normalize_observation
                     assert nenv > 0, 'Bad input for recurrent policy: batch size {} smaller than nsteps {}'.format(nbatch, nsteps)
                     policy_latent, recurrent_tensors = policy_network(encoded_x, nenv)
                     extra_tensors.update(recurrent_tensors)
-
 
         _v_net = value_network
 

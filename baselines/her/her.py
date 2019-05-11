@@ -21,7 +21,6 @@ def mpi_average(value):
 
 def train(*, rollout_worker=None, policy=None, evaluator=None, rank=None, nupdates=None,
                save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=10, n_batches=40, policy_save_interval=None, demo_file=None, logger=None, **kwargs):
-    import ipdb; ipdb.set_trace()
     rank = MPI.COMM_WORLD.Get_rank()
 
     if save_path:
