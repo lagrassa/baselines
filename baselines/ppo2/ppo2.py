@@ -19,15 +19,17 @@ def constfn(val):
         return val
     return f
 
-def learn_test(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
+def learn_test(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None, success_only = True):
     assert(nsteps > n_episodes)
     obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
-    success_rate =  safemean(returns)
-    #success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
+    if success_only:
+        success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
+    else:
+        success_rate =  safemean(returns)
     return success_rate
 
 
-def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
+def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None, success_only=True):
 
     assert nbatch % nminibatches == 0
     # Start timer
@@ -90,16 +92,13 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     # Calculate the fps (frame per second)
     fps = int(nbatch / (tnow - tstart))
     mean_reward = safemean([epinfo['r'] for epinfo in epinfobuf])
-    try:
+    if success_only:
         success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
-    except:
-        success_rate = None
+    else:
         success_rate =  safemean(returns)
-        success_rate = mean_reward
 
-
-        #print("mean reward", mean_reward)
-        #import ipdb; ipdb.set_trace()
+    #print("mean reward", mean_reward)
+    #import ipdb; ipdb.set_trace()
     infos = {}
     ev = explained_variance(values, returns)
     infos["exp_variance"] = float(ev)
@@ -131,6 +130,7 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     #    savepath = osp.join(checkdir, '%.5i'%update)
     #    print('Saving to', savepath)
     #    model.save(savepath)
+    print('success rate', success_rate)
     return model, success_rate, infos
 
 
@@ -143,6 +143,11 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
             batch_size=None,
             save_interval=0, load_path=None, model_fn=None, **network_kwargs):
 
+    lr = 10**(-1*lr)
+    vf_coef = 10**(-1*vf_coef)
+    seed = int(seed)
+    ent_coef = 10**(-1*vf_coef)
+
     if network == "lstm":
         nminibatches=1
     if nsteps is None:
@@ -153,7 +158,6 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
     #np.random.seed(seed)
     if nsteps is None:
         nsteps = n_steps_per_episode
-
     if isinstance(lr, float): lr = constfn(lr)
     else: assert callable(lr)
     if isinstance(cliprange, float): cliprange = constfn(cliprange)

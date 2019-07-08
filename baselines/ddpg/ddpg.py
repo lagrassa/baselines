@@ -75,6 +75,7 @@ def learn_setup(network, env,
           nb_rollout_steps=100,
           n_episodes=None,
           n_steps_per_episode=None,
+          reward_threshold=0,
           reward_scale=1.0,
           render=False,
           render_eval=False,
@@ -95,7 +96,12 @@ def learn_setup(network, env,
           eval_env=None,
           param_noise_adaption_interval=50,
           **network_kwargs):
-
+    actor_lr = 10**-actor_lr
+    critic_lr = 10**-critic_lr
+    batch_size =2**int(batch_size)
+    if seed is None:
+        seed = 17
+    seed = int(seed)
     set_global_seeds(seed)
     if nb_epoch_cycles is None:
         nb_epoch_cycles = n_episodes 
@@ -174,6 +180,7 @@ def learn_setup(network, env,
         "epoch_episode_steps":epoch_episode_steps,
         "batch_size":batch_size,
         "eval_env":eval_env,
+        "reward_threshold": reward_threshold,
         "epoch_actions" : epoch_actions,
         "nb_train_steps":nb_train_steps,
         "epoch_qs" : epoch_qs,
@@ -217,6 +224,7 @@ def learn_test(epoch_episode_rewards=[],
                nb_rollout_steps = None,
                agent = None,
                t = None,
+               reward_threshold=None,
                n_episodes=None,
                n_steps_per_iter=None,
                episode_reward = None,
@@ -245,6 +253,7 @@ def learn_iter(epoch_episode_rewards=[],
                epoch_episode_steps=[],
                episode_rewards_history=None,
                update = None,
+               reward_threshold=None,
                epoch_actions = [],
                param_noise_adaption_interval=None,
                eval_env=None,
@@ -270,6 +279,7 @@ def learn_iter(epoch_episode_rewards=[],
                nenvs = None,
                obs = None,
                rank = None,
+               success_only = True,
                render = None):
     successes = []
     if n_steps_per_iter is not None:
@@ -277,6 +287,7 @@ def learn_iter(epoch_episode_rewards=[],
     if n_episodes is not None:
         nb_epoch_cycles = n_episodes
     for cycle in range(nb_epoch_cycles):
+        agent.reset()
         # Perform rollouts.
         if nenvs > 1:
             # if simulating multiple envs in parallel, impossible to reset agent at the end of the episode in each
@@ -285,7 +296,6 @@ def learn_iter(epoch_episode_rewards=[],
         for t_rollout in range(nb_rollout_steps):
             # Predict next action.
             action, q, _, _ = agent.step(obs[0], apply_noise=not test, compute_Q=True)
-
             # Execute next action.
             if rank == 0 and render:
                 env.render()
@@ -306,7 +316,6 @@ def learn_iter(epoch_episode_rewards=[],
             agent.store_transition(obs[0], action, r, new_obs, done) #the batched data will be unrolled in memory.py's append.
 
             obs[0] = new_obs
-
             for d in range(len(done)):
                 if done[d]:
                     # Episode done.
@@ -314,14 +323,17 @@ def learn_iter(epoch_episode_rewards=[],
                     episode_rewards_history.append(episode_reward[d])
                     epoch_episode_steps.append(episode_step[d])
                     #successes.append(int(episode_reward[d] >= 0))
-                    successes.append(episode_reward[d])
+                    if success_only:
+                        successes.append(episode_reward[d] > reward_threshold)
+                    else:
+                        successes.append(episode_reward[d])
+
+                    #successes.append(episode_reward[d])
                     episode_reward[d] = 0.
                     episode_step[d] = 0
                     epoch_episodes[0] += 1
                     episodes[0] += 1
-                    if nenvs == 1:
-                        agent.reset()
-
+                    agent.reset()
         if not test:
             #train
             epoch_actor_losses = []
@@ -337,7 +349,6 @@ def learn_iter(epoch_episode_rewards=[],
                 epoch_critic_losses.append(cl)
                 epoch_actor_losses.append(al)
                 agent.update_target_net()
-
 
     if MPI is not None:
         mpi_size = MPI.COMM_WORLD.Get_size()
@@ -361,7 +372,7 @@ def learn_iter(epoch_episode_rewards=[],
         combined_stats['total/duration'] = duration
 
         combined_stats['rollout/success_rate'] = np.mean(successes)
-        print("successes", np.mean(successes))
+        #assert(not (successes == successes[0]).all() or successes[0] == )
         combined_stats['total/steps_per_second'] = float(t[0]) / float(duration)
         combined_stats['total/episodes'] = episodes
         combined_stats['rollout/episodes'] = epoch_episodes[0]
