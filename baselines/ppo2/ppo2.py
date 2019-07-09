@@ -146,7 +146,7 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
     lr = 10**(-1*lr)
     vf_coef = 10**(-1*vf_coef)
     seed = int(seed)
-    ent_coef = 10**(-1*vf_coef)
+    ent_coef = 10**(-1*ent_coef)
 
     if network == "lstm":
         nminibatches=1

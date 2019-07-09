@@ -44,12 +44,14 @@ def learn(network, env,
           eval_env=None,
           param_noise_adaption_interval=50,
           **network_kwargs):
+           
     local_variables = learn_setup(network, env, seed=seed, total_timesteps=total_timesteps, nb_epochs=nb_epochs, nb_epoch_cycles=nb_epoch_cycles, nb_rollout_steps=100,reward_scale=1.0,render=render,render_eval=render_eval,noise_type='adaptive-param_0.2',normalize_returns=False,normalize_observations=True,critic_l2_reg=1e-2,
           exp_name=exp_name,
           eval_env=eval_env,
           actor_lr=actor_lr,
           critic_lr=critic_lr,
           popart=popart,
+          logspace = False,
           gamma=gamma,
           clip_norm=clip_norm,
           nb_train_steps=nb_train_steps, # per epoch cycle and MPI worker,
@@ -74,6 +76,7 @@ def learn_setup(network, env,
           nb_epoch_cycles=None,
           nb_rollout_steps=100,
           n_episodes=None,
+          logspace= True,
           n_steps_per_episode=None,
           reward_threshold=0,
           reward_scale=1.0,
@@ -96,12 +99,13 @@ def learn_setup(network, env,
           eval_env=None,
           param_noise_adaption_interval=50,
           **network_kwargs):
-    actor_lr = 10**-actor_lr
-    critic_lr = 10**-critic_lr
-    batch_size =2**int(batch_size)
-    if seed is None:
-        seed = 17
-    seed = int(seed)
+    if logspace:
+        actor_lr = 10**-actor_lr
+        critic_lr = 10**-critic_lr
+        batch_size =2**int(batch_size)
+        if seed is None:
+            seed = 17
+        seed = int(seed)
     set_global_seeds(seed)
     if nb_epoch_cycles is None:
         nb_epoch_cycles = n_episodes 
@@ -408,8 +412,8 @@ def learn_iter(epoch_episode_rewards=[],
         for key in sorted(combined_stats.keys()):
             logger.record_tabular(key, combined_stats[key])
 
-        #if rank == 0:
-        #    logger.dump_tabular()
+        if rank == 0:
+            logger.dump_tabular()
         logger.info('')
         logdir = logger.get_dir()
         if rank == 0 and logdir:
