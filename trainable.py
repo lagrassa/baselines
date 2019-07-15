@@ -13,10 +13,11 @@ from baselines.common.vec_env.vec_normalize import VecNormalize
 #from gym.envs.registration import register
 GIT_DIR = os.environ["HOME"]+"/git/"
 SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
-train_alg_to_iters = {'ppo2':75, 'ddpg':1e7, 'naf':1e6, 'cma':75, 'her':90000}
-tune_alg_to_iters = {'ppo2':300, 'ddpg':200, 'naf':80, 'cma':300, 'her':5000//50}
+train_alg_to_iters = {'ppo2':1e5, 'ddpg':1e5, 'naf':1e6, 'cma':1e5, 'her':90000}
+tune_alg_to_iters = {'ppo2':300, 'ddpg':100, 'naf':80, 'cma':300, 'her':5000//50}
+tune_alg_to_iters = {'ppo2':300, 'ddpg':50, 'naf':80, 'cma':30, 'her':5000//50}
 n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40}
-n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':40, 'ScoopEnv-v0':8}
+n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':100, 'ScoopEnv-v0':8} #was 10 for a while.... 
 #tune_alg_to_iters = {'ppo2':800, 'ddpg':80, 'naf':80, 'cma':20, 'her':5000}
 
 #register(
@@ -120,11 +121,12 @@ def make_class(params):
         def _train(self):
             self.local_variables['update'] = self.nupdates
             print("nupdates", self.alg, self.nupdates, " of ", self.nupdates_total)
-            _, _, infos = self.alg_module.learn_iter(**self.local_variables)
+            _, tmp_var, infos = self.alg_module.learn_iter(**self.local_variables)
+            #test_success_rate = tmp_var
             if self.env_name == "StirEnv-v0":
                 num_tests = 5
             else:
-                num_tests = 25
+                num_tests = 17#25
             test_success_rate = self._test(n_test_rollouts=num_tests)['success_rate']
             print('sucess', test_success_rate) 
             if np.isnan(test_success_rate):
@@ -133,7 +135,7 @@ def make_class(params):
             if test_success_rate > self.best_success_rate:
                 self.best_success_rates.append(test_success_rate)
                 self.best_success_rate = test_success_rate
-                if test_success_rate > 0:
+                if True or test_success_rate > 0:
                     np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"best_params_so_far.npy", self.sample_config_bound)
                     np.save(SAVE_DIR+"hyperparams/"+get_formatted_name(self.params)+"_best_success_rates.npy", self.best_success_rates)
             self.lock.release()
@@ -240,6 +242,7 @@ def alg_to_config(alg, env_name=None):
                         'n_episodes':n_episodes_per_env[env_name],#200,
                         'n_steps_per_episode':n_steps_per_iter_per_env[env_name],
                         'reward_threshold' : thresh,
+                        'noise_type':'adaptive-param_0.2',
                         'gamma':1.0}
         env_config = {'num_env':1}
 
@@ -323,9 +326,9 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
     else:
         grace_period = 5
         max_t = 1e6//40 #this doesn't actually mean anything. Trainable takes care of killing processes when they go on for too long
-        num_samples = 30#30
+        num_samples = 15#30
         num_cpu = 1#10
-        num_total_cpu = 10
+        num_total_cpu = 7
         num_gpu = 0
     rn = (0,1)
     space = alg_to_config(params['alg'],params['env_name'])[3]
