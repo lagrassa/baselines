@@ -395,6 +395,7 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
         test_success_rates.append(test_res['success_rate'])
         infos = test_res['infos']
         for info in infos.keys():
+            import ipdb; ipdb.set_trace()
             if info in info_data.keys():
                info_data[info].append(infos[info])
             else:

@@ -162,7 +162,7 @@ def learn_setup(network, env, total_timesteps=None,
                        'evaluator':evaluator,
                        'logger':logger}
     return local_variables
-def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,
+def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,success_only=None, 
                save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=None, n_batches=None, policy_save_interval=None, demo_file=None):
 
     # train
@@ -214,7 +214,7 @@ def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nup
     #if rank != 0:
     #    assert local_uniform[0] != root_uniform[0]
     return None, success_rate, infos
-def learn_test(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,n_episodes=None, n_steps_per_iter=None,
+def learn_test(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,n_episodes=None, n_steps_per_iter=None,success_only=None,
                save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=None, n_batches=None, policy_save_interval=None, demo_file=None):
 
     # test
