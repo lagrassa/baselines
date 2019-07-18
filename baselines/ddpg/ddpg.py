@@ -152,6 +152,8 @@ def learn_setup(network, env,
                 raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     max_action = env.action_space.high
+    #print("actual max action", max_action)
+    max_action = 1
     logger.info('scaling actions by {} before executing in env'.format(max_action))
 
     agent = DDPG(actor, critic, memory, env.observation_space.shape, env.action_space.shape,
@@ -209,6 +211,7 @@ def learn_setup(network, env,
         "episodes":[episodes],
         "rank" : rank,
         "param_noise_adaption_interval":param_noise_adaption_interval,
+        "noise_type" : noise_type, 
         "render" : render}
     return local_variables
 
@@ -217,6 +220,7 @@ def learn_test(epoch_episode_rewards=[],
                episode_rewards_history=None,
                update = None,
                epoch_actions = [],
+               reward_scale=1,
                param_noise_adaption_interval=None,
                eval_env=None,
                start_time=None,
@@ -261,11 +265,13 @@ def learn_iter(epoch_episode_rewards=[],
                epoch_episode_steps=[],
                episode_rewards_history=None,
                update = None,
+               reward_scale=1,
                reward_threshold=None,
                epoch_actions = [],
                param_noise_adaption_interval=None,
                eval_env=None,
                start_time=None,
+               noise_type="adaptive-param_0.2",
                batch_size=None,
                memory=None,
                epoch_qs = [],
@@ -310,6 +316,7 @@ def learn_iter(epoch_episode_rewards=[],
 
             # max_action is of dimension A, whereas action is dimension (nenvs, A) - the multiplication gets broadcasted to the batch
             new_obs, r, done, info = env.step(max_action * action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+
             # note these outputs are batched from vecenv
 
             t[0] += 1
@@ -331,16 +338,19 @@ def learn_iter(epoch_episode_rewards=[],
                     episode_rewards_history.append(episode_reward[d])
                     epoch_episode_steps.append(episode_step[d])
                     #successes.append(int(episode_reward[d] >= 0))
+                    #import ipdb; ipdb.set_trace()
                     if success_only:
-                        successes.append(episode_reward[d] > reward_threshold)
+                        successes.append(episode_reward[d]/reward_scale > reward_threshold)
                     else:
-                        successes.append(episode_reward[d])
+                        successes.append(episode_reward[d]/reward_scale)
 
                     #successes.append(episode_reward[d])
                     episode_reward[d] = 0.
                     episode_step[d] = 0
                     epoch_episodes[0] += 1
                     episodes[0] += 1
+                    new_obs = [env.reset()]
+                    obs = new_obs
                     agent.reset()
         if not test:
             #train

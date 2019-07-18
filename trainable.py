@@ -101,8 +101,9 @@ def make_class(params):
             self.nupdates_total = total_iters
             print("total num updates", self.nupdates_total)
             self.nupdates = 1
-            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
-            #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
+            
+            #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
+            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
             if self.alg == "ppo2":
                 #env = VecNormalize(env)
                 learn_params["nupdates"] = self.nupdates_total
@@ -110,6 +111,7 @@ def make_class(params):
                 learn_params['env'] = env 
              
             load_path = None
+    
             self.local_variables = self.alg_module.learn_setup(**learn_params)
             self.mean_reward_over_samples = []
             if env_name in ["FetchPush-v1", "FetchReach-v1"]:
@@ -334,7 +336,7 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
     else:
         grace_period = 5
         max_t = 1e6//40 #this doesn't actually mean anything. Trainable takes care of killing processes when they go on for too long
-        num_samples = 7 #30
+        num_samples = 30 #30
         num_cpu = 1#10
         num_total_cpu = 3
         num_gpu = 0
@@ -380,7 +382,7 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
     exp_name = get_formatted_name(params)
     if hyperparam_file is None:
         hyperparam_file = "hyperparams/"+exp_name+"best_hyperparams.npy"
-    hyperparams = np.load(hyperparam_file).all()
+    hyperparams = np.load(hyperparam_file, allow_pickle=True).all()
 
     args = {"sample_config_best":hyperparams}
     #overwrite the old ones
