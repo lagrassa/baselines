@@ -28,7 +28,7 @@ def learn(network, env,
           render=False,
           render_eval=False,
           noise_type='adaptive-param_0.2',
-          normalize_returns=False,
+          normalize_returns=True,
           normalize_observations=True,
           critic_l2_reg=1e-2,
           exp_name="test",
@@ -72,6 +72,7 @@ def learn(network, env,
 def learn_setup(network, env,
           seed=None,
           total_timesteps=None,
+          iterations=None,
           nb_epochs=None, # with default settings, perform 1M steps total
           nb_epoch_cycles=None,
           nb_rollout_steps=100,
@@ -83,6 +84,7 @@ def learn_setup(network, env,
           render=False,
           render_eval=False,
           noise_type='adaptive-param_0.2',
+          noise_level="0.2",
           normalize_returns=False,
           normalize_observations=True,
           critic_l2_reg=1e-2,
@@ -136,7 +138,9 @@ def learn_setup(network, env,
             if current_noise_type == 'none':
                 pass
             elif 'adaptive-param' in current_noise_type:
+               
                 _, stddev = current_noise_type.split('_')
+                stddev = noise_level
                 param_noise = AdaptiveParamNoiseSpec(initial_stddev=float(stddev), desired_action_stddev=float(stddev))
             elif 'normal' in current_noise_type:
                 _, stddev = current_noise_type.split('_')

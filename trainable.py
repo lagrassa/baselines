@@ -5,6 +5,7 @@ from helper import get_formatted_name, get_short_form_name
 import json
 import numpy as np
 import ray.tune as tune
+from ray.tune.suggest.bayesopt import BayesOptSearch
 import tensorflow as tf
 import baselines
 from baselines.common.tf_util import get_session
@@ -15,7 +16,7 @@ GIT_DIR = os.environ["HOME"]+"/git/"
 SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
 train_alg_to_iters = {'ppo2':1e5, 'ddpg':1e5, 'naf':1e6, 'cma':1e5, 'her':90000}
 tune_alg_to_iters = {'ppo2':300, 'ddpg':100, 'naf':80, 'cma':300, 'her':5000//50}
-tune_alg_to_iters = {'ppo2':300, 'ddpg':50, 'naf':80, 'cma':30, 'her':5000//50}
+tune_alg_to_iters = {'ppo2':30, 'ddpg':30, 'naf':80, 'cma':30, 'her':5000//50}
 n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40}
 n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':100, 'ScoopEnv-v0':8} #was 10 for a while.... 
 #tune_alg_to_iters = {'ppo2':800, 'ddpg':80, 'naf':80, 'cma':20, 'her':5000}
@@ -230,18 +231,25 @@ def alg_to_config(alg, env_name=None):
                         lambda spec: np.random.choice([3,4,5])),
                     "seed": tune.sample_from(
                         lambda spec: np.random.choice([1,2,10,15,20])),
+                    "noise_level": tune.sample_from(
+                        lambda spec: np.random.random([0.05,0.3])),
+                    "tau": tune.sample_from(
+                        lambda spec: np.random.random([2,3])),
                     "reward_scale": tune.sample_from(
                         lambda spec: np.random.choice([0.01,10])) }
         cont_space =  {"actor_lr": [2,5],
                     "batch_size": [2,11],
                     "critic_lr": [2,5],
                     "seed":[1,20],
+                    "tau":[2,3],
+                    "noise_level":[0.05,0.3],
                     "reward_scale": [0.01, 10]}
         
         fixed_config = {'network':'mlp', 
                         'n_episodes':n_episodes_per_env[env_name],#200,
                         'n_steps_per_episode':n_steps_per_iter_per_env[env_name],
                         'reward_threshold' : thresh,
+                        'critic_l2_reg':0.0,
                         'noise_type':'adaptive-param_0.2',
                         'gamma':1.0}
         env_config = {'num_env':1}
@@ -326,13 +334,12 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
     else:
         grace_period = 5
         max_t = 1e6//40 #this doesn't actually mean anything. Trainable takes care of killing processes when they go on for too long
-        num_samples = 15#30
+        num_samples = 7 #30
         num_cpu = 1#10
-        num_total_cpu = 7
+        num_total_cpu = 3
         num_gpu = 0
-    rn = (0,1)
     space = alg_to_config(params['alg'],params['env_name'])[3]
-    bayes_opt = tune.suggest.bayesopt.BayesOptSearch(
+    bayes_opt = BayesOptSearch(
         space,
         max_concurrent=num_total_cpu,
         #metric="mean_loss",
@@ -389,7 +396,7 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
     if LLcluster and exp_number is None:
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(int(iters)):
-        if i % 5 == 0:
+        if i % 2 == 0:
             print ("on iter #", i)
         test_res = trainable._train()
         test_success_rates.append(test_res['success_rate'])
