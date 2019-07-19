@@ -287,7 +287,7 @@ class DDPG(object):
 
     def train(self):
         # Get a batch.
-        batch = self.memory.sample(batch_size=self.batch_size, sample_high = True)
+        batch = self.memory.sample(batch_size=self.batch_size)
 
         if self.normalize_returns and self.enable_popart:
             old_mean, old_std, target_Q = self.sess.run([self.ret_rms.mean, self.ret_rms.std, self.target_Q], feed_dict={
