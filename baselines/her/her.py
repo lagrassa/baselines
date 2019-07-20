@@ -80,6 +80,8 @@ def learn_setup(network, env, total_timesteps=None,
     **kwargs
 ):
     override_params = override_params or {}
+    if seed is None:
+        seed = 17
     seed = int(seed)
     if MPI is not None:
         rank = MPI.COMM_WORLD.Get_rank()
@@ -168,11 +170,12 @@ def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nup
     # train
     epoch = nupdates
     rollout_worker.clear_history()
+    
     for _ in range(n_cycles):
         episode = rollout_worker.generate_rollouts()
         policy.store_episode(episode)
         for _ in range(n_batches):
-            policy.train()
+            critic_loss, actor_loss= policy.train()
         policy.update_target_net()
 
     # test
@@ -183,15 +186,17 @@ def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nup
     # record logs
     logger.record_tabular('epoch', epoch)
     infos = {}
+    infos["actor_loss"] = actor_loss
+    infos["critic_loss"] = critic_loss
     for key, val in evaluator.logs('test'):
         logger.record_tabular(key, mpi_average(val))
-        infos[key] = val
+        #infos[key] = val
     for key, val in rollout_worker.logs('train'):
         logger.record_tabular(key, mpi_average(val))
-        infos[key] = val
+        #infos[key] = val
     for key, val in policy.logs():
         logger.record_tabular(key, mpi_average(val))
-        infos[key] = val
+        #infos[key] = val
 
     logger.dump_tabular()
 
