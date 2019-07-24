@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+
 import functools
 
 from baselines.common.tf_util import get_session, save_variables, load_variables
@@ -45,6 +47,8 @@ class Model(object):
         self.R = R = tf.placeholder(tf.float32, [None])
         # Keep track of old actor
         self.OLDNEGLOGPAC = OLDNEGLOGPAC = tf.placeholder(tf.float32, [None])
+        #self.OLDMEAN = OLDMEAN = train_model.pdtype.sample_placeholder([None])
+
         # Keep track of old critic
         self.OLDVPRED = OLDVPRED = tf.placeholder(tf.float32, [None])
         self.LR = LR = tf.placeholder(tf.float32, [])
@@ -52,6 +56,7 @@ class Model(object):
         self.CLIPRANGE = CLIPRANGE = tf.placeholder(tf.float32, [])
 
         neglogpac = train_model.pd.neglogp(A)
+        newmean = train_model.pd.mean
 
         # Calculate the entropy
         # Entropy is used to improve exploration by limiting the premature convergence to suboptimal policy.
@@ -73,6 +78,7 @@ class Model(object):
 
         # Calculate ratio (pi current policy / pi old policy)
         ratio = tf.exp(OLDNEGLOGPAC - neglogpac)
+        #mean_squared_distance = tf.reduce_mean(tf.square(newmean-OLDMEAN))
 
         # Defining Loss = - J is equivalent to max J
         pg_losses = -ADV * ratio
@@ -109,9 +115,22 @@ class Model(object):
         self.grads = grads
         self.var = var
         self._train_op = self.trainer.apply_gradients(grads_and_var)
-        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac']
-        self.stats_list = [pg_loss, vf_loss, entropy, approxkl, clipfrac]
+        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac', 'pg_loss1', 'pg_losses2', 'actualloss']
 
+        """
+        def nlpnoise(x, i):
+            add_vec = [0,0]
+            add_vec[i] = x
+            return train_model.pd.neglogp(A[30] +tf.constant(add_vec))
+        """
+        self.stats_list = [pg_loss, vf_loss, entropy, approxkl, clipfrac, pg_losses, pg_losses2, loss]
+        #for
+        """
+        for i in [0]:
+            for x in np.linspace(-1,1,101):
+                self.stats_list.append(nlpnoise(np.float32(x), i))
+            self.loss_names.append('nlp'+str(i))
+        """
 
         self.train_model = train_model
         self.act_model = act_model
@@ -127,14 +146,13 @@ class Model(object):
         if MPI is not None:
             sync_from_root(sess, global_variables) #pylint: disable=E1101
 
-    def train(self, lr, cliprange, obs, returns, masks, actions, values, neglogpacs, states=None):
+    def train(self, lr, cliprange, obs, returns, masks, actions, values, neglogpacs,  states=None):
         # Here we calculate advantage A(s,a) = R + yV(s') - V(s)
         # Returns = R + yV(s')
         advs = returns - values
 
         # Normalize the advantages
         advs = (advs - advs.mean()) / (advs.std() + 1e-8)
-
         td_map = {
             self.train_model.X : obs,
             self.A : actions,
@@ -143,14 +161,16 @@ class Model(object):
             self.LR : lr,
             self.CLIPRANGE : cliprange,
             self.OLDNEGLOGPAC : neglogpacs,
+            #self.OLDMEAN : oldmeans,
             self.OLDVPRED : values
         }
         if states is not None:
             td_map[self.train_model.S] = states
             td_map[self.train_model.M] = masks
 
-        return self.sess.run(
+        output = self.sess.run(
             self.stats_list + [self._train_op],
             td_map
         )[:-1]
+        return output
 

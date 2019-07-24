@@ -64,8 +64,8 @@ def learn(network, env,
     else:
         nb_epochs = 500
     for epoch in range(nb_epochs):
-        _, success_rate = learn_iter(**local_variables)
-    return agent
+        _, success_rate, _ = learn_iter(**local_variables)
+    return local_variables["agent"]
 
 def learn_setup(network, env,
           seed=None,
@@ -111,7 +111,6 @@ def learn_setup(network, env,
         rank = MPI.COMM_WORLD.Get_rank()
     else:
         rank = 0
-
     nb_actions = env.action_space.shape[-1]
     assert (np.abs(env.action_space.low) == env.action_space.high).all()  # we assume symmetric actions.
 
@@ -147,7 +146,6 @@ def learn_setup(network, env,
         actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
         reward_scale=reward_scale)
     logger.info('Using agent with the following configuration:')
-    logger.info(str(agent.__dict__.items()))
 
     eval_episode_rewards_history = deque(maxlen=100)
     episode_rewards_history = deque(maxlen=100)
@@ -239,6 +237,9 @@ def learn_test(epoch_episode_rewards=[],
         eval_info = eval_info[0]
     return eval_info['is_success']
 
+def learn_test(**kwargs):
+    return learn_iter(**kwargs, test=True)[1]
+
 
 def learn_iter(epoch_episode_rewards=[], 
                epoch_episode_steps=[],
@@ -256,10 +257,13 @@ def learn_iter(epoch_episode_rewards=[],
                mean_rewards = [],
                epoch_episodes = [0],
                nb_epoch_cycles = None,
+               n_episodes=None,
                env=None,
                nb_rollout_steps = None,
+               n_steps_per_iter=None,
                agent = None,
                t = None,
+               test=False,
                episode_reward = None,
                episode_step = None,
                episodes=None,
@@ -268,6 +272,10 @@ def learn_iter(epoch_episode_rewards=[],
                rank = None,
                render = None):
     successes = []
+    if n_steps_per_iter is not None:
+        nb_rollout_steps = n_steps_per_iter
+    if n_episodes is not None:
+        nb_epoch_cycles = n_episodes
     for cycle in range(nb_epoch_cycles):
         # Perform rollouts.
         if nenvs > 1:
@@ -276,7 +284,7 @@ def learn_iter(epoch_episode_rewards=[],
             agent.reset()
         for t_rollout in range(nb_rollout_steps):
             # Predict next action.
-            action, q, _, _ = agent.step(obs[0], apply_noise=True, compute_Q=True)
+            action, q, _, _ = agent.step(obs[0], apply_noise=not test, compute_Q=True)
 
             # Execute next action.
             if rank == 0 and render:
@@ -305,7 +313,8 @@ def learn_iter(epoch_episode_rewards=[],
                     epoch_episode_rewards.append(episode_reward[d])
                     episode_rewards_history.append(episode_reward[d])
                     epoch_episode_steps.append(episode_step[d])
-                    successes.append(int(episode_reward[d] >= 0))
+                    #successes.append(int(episode_reward[d] >= 0))
+                    successes.append(episode_reward[d])
                     episode_reward[d] = 0.
                     episode_step[d] = 0
                     epoch_episodes[0] += 1
@@ -313,87 +322,91 @@ def learn_iter(epoch_episode_rewards=[],
                     if nenvs == 1:
                         agent.reset()
 
+        if not test:
+            #train
+            epoch_actor_losses = []
+            epoch_critic_losses = []
+            epoch_adaptive_distances = []
+            for t_train in range(nb_train_steps):
+                # Adapt param noise, if necessary.
+                if memory.nb_entries >= batch_size and t_train % param_noise_adaption_interval == 0:
+                    distance = agent.adapt_param_noise()
+                    epoch_adaptive_distances.append(distance)
 
-
-        # Train.
-        epoch_actor_losses = []
-        epoch_critic_losses = []
-        epoch_adaptive_distances = []
-        for t_train in range(nb_train_steps):
-            # Adapt param noise, if necessary.
-            if memory.nb_entries >= batch_size and t_train % param_noise_adaption_interval == 0:
-                distance = agent.adapt_param_noise()
-                epoch_adaptive_distances.append(distance)
-
-            cl, al = agent.train()
-            epoch_critic_losses.append(cl)
-            epoch_actor_losses.append(al)
-            agent.update_target_net()
+                cl, al = agent.train()
+                epoch_critic_losses.append(cl)
+                epoch_actor_losses.append(al)
+                agent.update_target_net()
 
 
     if MPI is not None:
         mpi_size = MPI.COMM_WORLD.Get_size()
     else:
         mpi_size = 1
+    infos = {}
+    if not test:
+        # Log stats.
+        # XXX shouldn't call np.mean on variable length lists
+        duration = time.time() - start_time
+        stats = agent.get_stats()
+        combined_stats = stats.copy()
+        combined_stats['rollout/return'] = np.mean(epoch_episode_rewards)
+        combined_stats['rollout/return_history'] = np.mean(episode_rewards_history)
+        combined_stats['rollout/episode_steps'] = np.mean(epoch_episode_steps)
+        combined_stats['rollout/actions_mean'] = np.mean(epoch_actions)
+        combined_stats['rollout/Q_mean'] = np.mean(epoch_qs)
+        combined_stats['train/loss_actor'] = np.mean(epoch_actor_losses)
+        combined_stats['train/loss_critic'] = np.mean(epoch_critic_losses)
+        combined_stats['train/param_noise_distance'] = np.mean(epoch_adaptive_distances)
+        combined_stats['total/duration'] = duration
 
-    # Log stats.
-    # XXX shouldn't call np.mean on variable length lists
-    duration = time.time() - start_time
-    stats = agent.get_stats()
-    combined_stats = stats.copy()
-    combined_stats['rollout/return'] = np.mean(epoch_episode_rewards)
-    combined_stats['rollout/return_history'] = np.mean(episode_rewards_history)
-    combined_stats['rollout/episode_steps'] = np.mean(epoch_episode_steps)
-    combined_stats['rollout/actions_mean'] = np.mean(epoch_actions)
-    combined_stats['rollout/Q_mean'] = np.mean(epoch_qs)
-    combined_stats['train/loss_actor'] = np.mean(epoch_actor_losses)
-    combined_stats['train/loss_critic'] = np.mean(epoch_critic_losses)
-    combined_stats['train/param_noise_distance'] = np.mean(epoch_adaptive_distances)
-    combined_stats['total/duration'] = duration
-    assert(np.mean(successes) >= 0)
+        combined_stats['rollout/success_rate'] = np.mean(successes)
+        print("successes", np.mean(successes))
+        combined_stats['total/steps_per_second'] = float(t[0]) / float(duration)
+        combined_stats['total/episodes'] = episodes
+        combined_stats['rollout/episodes'] = epoch_episodes[0]
+        combined_stats['rollout/actions_std'] = np.std(epoch_actions)
+        infos["action_mean"] = combined_stats["rollout/actions_mean"]
+        infos["loss_actor"] = combined_stats["train/loss_actor"]
+        infos["loss_critic"] = combined_stats["train/loss_critic"]
+        infos["param_noise_distance"] = combined_stats["train/param_noise_distance"]
+        # Evaluation statistics.
+        if eval_env is not None:
+            combined_stats['eval/return'] = eval_episode_rewards
+            combined_stats['eval/return_history'] = np.mean(eval_episode_rewards_history)
+            combined_stats['eval/Q'] = eval_qs
+            combined_stats['eval/episodes'] = len(eval_episode_rewards)
+        def as_scalar(x):
+            if isinstance(x, np.ndarray):
+                assert x.size == 1
+                return x[0]
+            elif np.isscalar(x):
+                return x
+            else:
+                raise ValueError('expected scalar, got %s'%x)
 
-    combined_stats['rollout/success_rate'] = np.mean(successes)
-    combined_stats['total/steps_per_second'] = float(t[0]) / float(duration)
-    combined_stats['total/episodes'] = episodes
-    combined_stats['rollout/episodes'] = epoch_episodes[0]
-    combined_stats['rollout/actions_std'] = np.std(epoch_actions)
-    # Evaluation statistics.
-    if eval_env is not None:
-        combined_stats['eval/return'] = eval_episode_rewards
-        combined_stats['eval/return_history'] = np.mean(eval_episode_rewards_history)
-        combined_stats['eval/Q'] = eval_qs
-        combined_stats['eval/episodes'] = len(eval_episode_rewards)
-    def as_scalar(x):
-        if isinstance(x, np.ndarray):
-            assert x.size == 1
-            return x[0]
-        elif np.isscalar(x):
-            return x
-        else:
-            raise ValueError('expected scalar, got %s'%x)
+        combined_stats_sums = np.array([ np.array(x).flatten()[0] for x in combined_stats.values()])
+        if MPI is not None:
+            combined_stats_sums = MPI.COMM_WORLD.allreduce(combined_stats_sums)
 
-    combined_stats_sums = np.array([ np.array(x).flatten()[0] for x in combined_stats.values()])
-    if MPI is not None:
-        combined_stats_sums = MPI.COMM_WORLD.allreduce(combined_stats_sums)
+        combined_stats = {k : v / mpi_size for (k,v) in zip(combined_stats.keys(), combined_stats_sums)}
 
-    combined_stats = {k : v / mpi_size for (k,v) in zip(combined_stats.keys(), combined_stats_sums)}
+        # Total statistics.
+        combined_stats['total/steps'] = t[0]
 
-    # Total statistics.
-    combined_stats['total/steps'] = t[0]
+        for key in sorted(combined_stats.keys()):
+            logger.record_tabular(key, combined_stats[key])
 
-    for key in sorted(combined_stats.keys()):
-        logger.record_tabular(key, combined_stats[key])
-
-    if rank == 0:
-        logger.dump_tabular()
-    logger.info('')
-    logdir = logger.get_dir()
-    if rank == 0 and logdir:
-        if hasattr(env, 'get_state'):
-            with open(os.path.join(logdir, 'env_state.pkl'), 'wb') as f:
-                pickle.dump(env.get_state(), f)
-        if eval_env and hasattr(eval_env, 'get_state'):
-            with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
-                pickle.dump(eval_env.get_state(), f)
-    return None, np.mean(successes)
+        #if rank == 0:
+        #    logger.dump_tabular()
+        logger.info('')
+        logdir = logger.get_dir()
+        if rank == 0 and logdir:
+            if hasattr(env, 'get_state'):
+                with open(os.path.join(logdir, 'env_state.pkl'), 'wb') as f:
+                    pickle.dump(env.get_state(), f)
+            if eval_env and hasattr(eval_env, 'get_state'):
+                with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
+                    pickle.dump(eval_env.get_state(), f)
+    return None, np.mean(successes), infos
 

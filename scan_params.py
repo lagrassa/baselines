@@ -2,7 +2,7 @@ from trainable import best_hyperparams_for_config
 import numpy as np
 import os
 from helper import get_formatted_name
-env_name = "FetchPush-v1"
+#env_name = "FetchPush-v1"
 algs = ["naf"]
 def optimize_hyperparams(params, smoke_test = False):
     for alg in algs:
@@ -21,11 +21,11 @@ def run_action_noise_experiment(num_samples, param_set, exp_name, env_name, LLcl
     for alg in algs:
         default_params['alg'] = alg
         #sample_space = {0, 0.01, 0.1}
-        sample_space={0}
+        sample_space={85}
         #sample_space = {0.01, 0.05, 0.08, 0.1}
         for action_noise_std in sample_space:
             params = default_params.copy()
-            params['action_noise_std'] = action_noise_std
+            params['goal_radius'] = action_noise_std
             hyperparam_file = get_formatted_name(params)+"best_hyperparams.npy"
             if hyperparam_file not in os.listdir("hyperparams") or smoke_test:
                 optimize_hyperparams(params, smoke_test = smoke_test)
@@ -70,9 +70,15 @@ def test_write_batch_job():
     f.close()
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
+<<<<<<< HEAD
 #env_name = "FetchPush-v1"
 env_name = "FetchReach-v1"
 exp_name="AL47"
+=======
+#env_name = "FetchReach-v1"
+env_name = "StirEnv-v0"
+exp_name="AL59c"
+>>>>>>> 2db4a7ade676b050dbc0a673ebcf023ee7d0eea0
 param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0, 'goal_radius':0.05}
 
 #optimize_hyperparams(param_set, smoke_test = True)

@@ -22,7 +22,8 @@ def constfn(val):
 def learn_test(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
     assert(nsteps > n_episodes)
     obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
-    success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
+    success_rate =  safemean(returns)
+    #success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
     return success_rate
 
 
@@ -40,12 +41,14 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
     if eval_env is not None:
         eval_obs, eval_returns, eval_masks, eval_actions, eval_values, eval_neglogpacs, eval_states, eval_epinfos = eval_runner.run() #pylint: disable=E0632
+    #variables = model.act_model.pd.neglogp(actions)
+    #feed_dict = {}
+    #sess.run(variables, feed_dict)
 
     epinfobuf.extend(epinfos)
     if eval_env is not None:
         eval_epinfobuf.extend(eval_epinfos)
 
-    # Here what we're going to do is for each minibatch calculate the loss and append it.
     mblossvals = []
     if states is None: # nonrecurrent version
         # Index of each element of batch_size
@@ -77,8 +80,10 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
                 mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))
 
     # Feedforward --> get losses --> update
-    lossvals = np.mean(mblossvals, axis=0)
- # Feedforward --> get losses --> update
+    #30th batch
+    #one_slice = np.array(mblossvals[-1][5:])[:,30]
+    #need to edit below to fix that, but w.e. for now 
+    #print(mblossvals[-1][5])
     lossvals = np.mean(mblossvals, axis=0)
     # End timer
     tnow = time.time()
@@ -87,39 +92,46 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     mean_reward = safemean([epinfo['r'] for epinfo in epinfobuf])
     try:
         success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
-        print("sucess_rate", success_rate)
     except:
         success_rate = None
+        success_rate =  safemean(returns)
+        success_rate = mean_reward
+
+
         #print("mean reward", mean_reward)
         #import ipdb; ipdb.set_trace()
-    if update % log_interval == 0 or update == 1:
+    infos = {}
+    ev = explained_variance(values, returns)
+    infos["exp_variance"] = float(ev)
+    for (lossval, lossname) in zip(lossvals, model.loss_names):
+        infos[lossname] = lossval
+    if False and (update % log_interval == 0 or update == 1):
         # Calculates if value function is a good predicator of the returns (ev > 1)
         # or if it's just worse than predicting nothing (ev =< 0)
-        ev = explained_variance(values, returns)
         logger.logkv("serial_timesteps", update*nsteps)
         logger.logkv("nupdates", update)
-        logger.logkv("total_timesteps", update*nbatch)
-        logger.logkv("fps", fps)
-        logger.logkv("explained_variance", float(ev))
-        logger.logkv('eprewmean', safemean([epinfo['r'] for epinfo in epinfobuf]))
-        logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
+        #logger.logkv("total_timesteps", update*nbatch)
+        #logger.logkv("fps", fps)
+        #logger.logkv("explained_variance", float(ev))
+        #logger.logkv('eprewmean', safemean([epinfo['r'] for epinfo in epinfobuf]))
+        #logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
         #logger.logkv('success_rate', success_rate)
 
         if eval_env is not None:
             logger.logkv('eval_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
             logger.logkv('eval_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
         #logger.logkv('time_elapsed', tnow - tfirststart)
-        for (lossval, lossname) in zip(lossvals, model.loss_names):
-            logger.logkv(lossname, lossval)
-        if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
-            logger.dumpkvs()
+        #for (lossval, lossname) in zip(lossvals, model.loss_names):
+        #    logger.logkv(lossname, lossval)
+        #if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
+        #    logger.dumpkvs()
     #if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
     #    checkdir = osp.join(logger.get_dir(), 'checkpoints')
     #    os.makedirs(checkdir, exist_ok=True)
     #    savepath = osp.join(checkdir, '%.5i'%update)
     #    print('Saving to', savepath)
     #    model.save(savepath)
-    return model, success_rate
+    return model, success_rate, infos
 
 
 def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=None, ent_coef=0.0, lr=3e-4, reward_scale = None, exp_name=None,
@@ -136,8 +148,9 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
     if nsteps is None:
         nsteps = n_steps_per_episode*n_episodes
 
-    set_global_seeds(seed)
-    np.random.seed(seed)
+    #set_global_seeds(seed)
+    #np.random.seed(None)
+    #np.random.seed(seed)
     if nsteps is None:
         nsteps = n_steps_per_episode
 
@@ -262,7 +275,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=1
 
     '''
 
-    set_global_seeds(seed)
+    assert(seed is None)
+    #set_global_seeds(seed)
 
     kwargs = {} #I'm sorry 6.031
     frame = inspect.currentframe()

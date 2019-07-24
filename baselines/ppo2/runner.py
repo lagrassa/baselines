@@ -26,7 +26,8 @@ class Runner(AbstractEnvRunner):
         for _ in range(self.nsteps):
             # Given observations, get action value and neglopacs
             # We already have self.obs because Runner superclass run self.obs[:] = env.reset() on init
-            actions, values, self.states, neglogpacs = self.model.step(self.obs, S=self.states, M=self.dones)
+            actions, values, self.states, neglogpacs, means= self.model.step(self.obs, S=self.states, M=self.dones, return_mean = True)
+            #actions = np.array([[ 0.1230037, -0.0580839]])
             mb_obs.append(self.obs.copy())
             mb_actions.append(actions)
             mb_values.append(values)
@@ -36,6 +37,21 @@ class Runner(AbstractEnvRunner):
             # Take actions in env and look the results
             # Infos contains a ton of useful informations
             self.obs[:], rewards, self.dones, infos = self.env.step(actions)
+            """
+            action_list = [[ 0.17564379, -0.05669818],
+            [-0.2444096,  -0.05721815],
+            [ 0.14898616, -0.04874793],
+            [-0.24145453, -0.00669231],
+            [ 0.2980977, -0.11402  ],
+            [-0.34770578, -0.01097037],
+            [-0.34770578, -0.01097037],
+            [-0.34770578, -0.01097037],
+            [-0.34770578, -0.01097037],
+            [-0.34770578, -0.01097037],
+            
+            ]
+            """
+
             for info in infos:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo: 

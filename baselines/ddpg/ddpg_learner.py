@@ -34,12 +34,11 @@ def reduce_var(x, axis=None, keepdims=False):
     return tf.reduce_mean(devs_squared, axis=axis, keep_dims=keepdims)
 
 def get_target_updates(vars, target_vars, tau):
-    logger.info('setting up target updates ...')
     soft_updates = []
     init_updates = []
     assert len(vars) == len(target_vars)
     for var, target_var in zip(vars, target_vars):
-        logger.info('  {} <- {}'.format(target_var.name, var.name))
+        #logger.info('  {} <- {}'.format(target_var.name, var.name))
         init_updates.append(tf.assign(target_var, var))
         soft_updates.append(tf.assign(target_var, (1. - tau) * target_var + tau * var))
     assert len(init_updates) == len(vars)
