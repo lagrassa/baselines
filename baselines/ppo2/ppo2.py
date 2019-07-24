@@ -1,4 +1,5 @@
 import os
+from itertools import chain
 import inspect
 import time
 import numpy as np
@@ -29,7 +30,7 @@ def learn_test(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     return success_rate
 
 
-def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None, success_only=True):
+def learn_iter(nbatch=None, nminibatches=None,  nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None, success_only=True):
 
     assert nbatch % nminibatches == 0
     # Start timer
@@ -63,7 +64,20 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
             for start in range(0, nbatch, nbatch_train):
                 end = start + nbatch_train
                 mbinds = inds[start:end]
-                slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
+                if isinstance(obs, list):
+                    slices = (arr[mbinds] for arr in (returns, masks, actions, values, neglogpacs))
+                    obs_slices = ()
+                    for subspace_i in range(len(obs[0])):
+                        subspace_obs = np.zeros(((len(mbinds),)+obs[0][subspace_i].shape))
+                        for ind in mbinds:
+                            subspace_obs = subspace_obs + (obs[ind][subspace_i],)
+                        subspace_obs = np.array(subspace_obs)
+                        obs_slices = obs_slices + (subspace_obs,)
+                    obs_slices = (obs_slices,)
+                    slices = list(chain(obs_slices, slices))
+
+                else:
+                    slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
                 mblossvals.append(model.train(lrnow, cliprangenow, *slices))
     else: # recurrent version
         assert nenvs % nminibatches == 0
@@ -124,12 +138,15 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
         #    logger.logkv(lossname, lossval)
         #if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         #    logger.dumpkvs()
-    #if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
-    #    checkdir = osp.join(logger.get_dir(), 'checkpoints')
-    #    os.makedirs(checkdir, exist_ok=True)
-    #    savepath = osp.join(checkdir, '%.5i'%update)
-    #    print('Saving to', savepath)
-    #    model.save(savepath)
+    model.save("models/"+exp_name)
+    """
+    if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
+        checkdir = osp.join(logger.get_dir(), 'checkpoints')
+        os.makedirs(checkdir, exist_ok=True)
+        savepath = osp.join(checkdir, '%.5i'%update)
+        print('Saving to', savepath)
+        model.save(savepath)
+    """
     print('success rate', success_rate)
     return model, success_rate, infos
 
@@ -205,6 +222,7 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
                        'model':model,
                        'runner':runner,
                        'lr':lr,
+                       'exp_name':exp_name,
                        'nsteps':nsteps,
                        'nenvs':nenvs,
                        'log_interval':log_interval,

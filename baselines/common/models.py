@@ -65,6 +65,22 @@ def cnn(**conv_kwargs):
         return nature_cnn(X, **conv_kwargs)
     return network_fn
 
+@register("cnn_and_1d")
+def cnn_small(**conv_kwargs):
+    def network_fn(X):
+        #[<tf.Tensor 'ppo2_model/Ob:0' shape=(1, 6) dtype=float32>, <tf.Tensor 'ppo2_model/Ob_1:0' shape=(1, 50, 50, 3) dtype=float32>]
+        forces, im = X
+        activ = tf.nn.relu
+        im = activ(conv(im, 'c1', nf=8, rf=2, stride=2, init_scale=np.sqrt(2), **conv_kwargs))
+        #h = activ(tf.layers.MaxPooling2D(2,2)(h))
+        im = activ(conv(im, 'c2', nf=32, rf=2, stride=2, init_scale=np.sqrt(2), **conv_kwargs))
+        #h = activ(tf.layers.MaxPooling2D(2,2)(h))
+        im = conv_to_fc(im)
+        h = tf.concat([im, forces], axis=1)
+        h = activ(fc(h, 'fc1', nh=30, init_scale=np.sqrt(2)))
+        h = activ(fc(h, 'fc2', nh=6, init_scale=np.sqrt(2)))
+        return h
+    return network_fn
 
 @register("cnn_small")
 def cnn_small(**conv_kwargs):

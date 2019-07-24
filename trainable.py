@@ -17,8 +17,9 @@ SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
 train_alg_to_iters = {'ppo2':1e5, 'ddpg':1e5, 'naf':1e6, 'cma':1e5, 'her':90000}
 tune_alg_to_iters = {'ppo2':300, 'ddpg':100, 'naf':80, 'cma':300, 'her':5000//50}
 tune_alg_to_iters = {'ppo2':30, 'ddpg':30, 'naf':80, 'cma':30, 'her':5000//50}
+#n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40}
 n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40}
-n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':100, 'ScoopEnv-v0':8} #was 10 for a while.... 
+n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':40, 'ScoopEnv-v0':8} #was 10 for a while.... 
 #tune_alg_to_iters = {'ppo2':800, 'ddpg':80, 'naf':80, 'cma':20, 'her':5000}
 
 #register(
@@ -78,7 +79,8 @@ def make_class(params):
                                    inter_op_parallelism_threads=1)
             config.gpu_options.allow_growth = True
             get_session(config=config)
-            flatten_dict_observations = self.alg not in {'her'}
+            force_flat = True
+            flatten_dict_observations = self.alg not in {'her'} or force_flat
             sample_config, fixed_config, env_config, cont_space = alg_to_config(params['alg'], env_name)
             if 'sample_config_best' not in arg.keys():
                 sample_config_sample = {ky:arg[ky] for ky in sample_config.keys() }
@@ -102,13 +104,14 @@ def make_class(params):
             print("total num updates", self.nupdates_total)
             self.nupdates = 1
             
-            #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
-            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
+            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
+            #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
             if self.alg == "ppo2":
                 #env = VecNormalize(env)
                 learn_params["nupdates"] = self.nupdates_total
             if 'env' not in learn_params.keys():
                 learn_params['env'] = env 
+            learn_params["exp_name"] = get_formatted_name(self.params)
              
             load_path = None
     
@@ -126,12 +129,11 @@ def make_class(params):
             print("nupdates", self.alg, self.nupdates, " of ", self.nupdates_total)
             _, tmp_var, infos = self.alg_module.learn_iter(**self.local_variables)
             #test_success_rate = tmp_var
-            if self.env_name == "StirEnv-v0":
+            if self.env_name == "StirEnv-v0" or self.env_name == "ScoopEnv-v0":
                 num_tests = 5
             else:
                 num_tests = 17#25
             test_success_rate = self._test(n_test_rollouts=num_tests)['success_rate']
-            print('sucess', test_success_rate) 
             if np.isnan(test_success_rate):
                 import ipdb; ipdb.set_trace()
             self.lock.acquire()
@@ -183,10 +185,15 @@ def pick_params(trial_list, exp_name="noexpname"):
 
 def alg_to_config(alg, env_name=None):
     num_env = 1
-    if 'env_name' == "StirEnv-v0" or 'env_name' == 'ScoopEnv-v0' :
+    if env_name == "StirEnv-v0" or env_name == 'ScoopEnv-v0' :
         thresh = 0
     else:
         thresh=-50
+    if env_name == "ScoopEnv-v0":
+        network = "mlp"#"cnn_and_1d"
+
+    else:
+        network = "mlp"
     if alg == "ppo2":
         sample_config =  {"lr": tune.sample_from(
             lambda spec: np.random.choice([2,3,4,5])),
@@ -217,7 +224,7 @@ def alg_to_config(alg, env_name=None):
         fixed_config = {'n_episodes':n_episodes_per_env[env_name],#80 
                         'n_steps_per_episode':n_steps_per_iter_per_env[env_name],
                         'gamma':1.0,
-                        'network':'mlp',
+                        'network':network,
                         'log_interval':10,
                         'nminibatches':4,
                         'total_timesteps':1e6,
@@ -336,9 +343,9 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
     else:
         grace_period = 5
         max_t = 1e6//40 #this doesn't actually mean anything. Trainable takes care of killing processes when they go on for too long
-        num_samples = 30 #30
+        num_samples = 20 #30
         num_cpu = 1#10
-        num_total_cpu = 3
+        num_total_cpu = 10
         num_gpu = 0
     space = alg_to_config(params['alg'],params['env_name'])[3]
     bayes_opt = BayesOptSearch(
@@ -398,8 +405,7 @@ def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=N
     if LLcluster and exp_number is None:
         exp_number = os.environ["SLURM_ARRAY_TASK_ID"]
     for i in range(int(iters)):
-        if i % 2 == 0:
-            print ("on iter #", i)
+        print ("on iter #", i)
         test_res = trainable._train()
         test_success_rates.append(test_res['success_rate'])
         infos = test_res['infos']
