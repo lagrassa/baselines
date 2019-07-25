@@ -138,7 +138,7 @@ def learn_iter(nbatch=None, nminibatches=None,  nbatch_train=None, model=None, r
         #    logger.logkv(lossname, lossval)
         #if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         #    logger.dumpkvs()
-    model.save("models/"+exp_name)
+    #model.load("models/"+exp_name)
     """
     if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
         checkdir = osp.join(logger.get_dir(), 'checkpoints')
@@ -151,7 +151,7 @@ def learn_iter(nbatch=None, nminibatches=None,  nbatch_train=None, model=None, r
     return model, success_rate, infos
 
 
-def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=None, ent_coef=0.0, lr=3e-4, reward_scale = None, exp_name=None,
+def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None, seed=None, nsteps=None, ent_coef=0.0, lr=3e-4, reward_scale = None, exp_name=None, load_file=None,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             n_steps_per_episode=None,
@@ -200,7 +200,8 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
     model = model_fn(policy=policy, ob_space=ob_space, ac_space=ac_space, nbatch_act=nenvs, nbatch_train=nbatch_train,
                     nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
                     max_grad_norm=max_grad_norm)
-
+    if load_file is not None:
+        model.load("models/"+load_file)
     if load_path is not None:
         model.load(load_path)
     # Instantiate the runner object

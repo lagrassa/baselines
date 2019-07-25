@@ -22,14 +22,20 @@ class DummyVecEnv(VecEnv):
         self.obs_noise_std = obs_noise_std
         self.rew_noise_std = rew_noise_std
         if encoder is not None:
-            encoder = load_model("models/"+encoder)
+            encoder = {'im':load_model("models/"+encoder["im"])}
+            import ipdb; ipdb.set_trace()
+            self.envs[0].env.env.gen_obs_space(encoder)
             print("Loading autoencoder")
         self.encoder=encoder
    
         self.distance_threshold = distance_threshold
         env = self.envs[0]
-        VecEnv.__init__(self, len(env_fns), env.observation_space, env.action_space)
-        obs_space = env.observation_space
+        VecEnv.__init__(self, len(env_fns), env.env.env.observation_space, env.action_space)
+        if encoder is not None: #this is such a bad hack, assuming no autoencoders for mlp
+            obs_space = env.env.env.observation_space
+        else:
+            obs_space = env.observation_space
+
         self.keys, shapes, dtypes = obs_space_info(obs_space)
 
         self.buf_obs = { k: np.zeros((self.num_envs,) + tuple(shapes[k]), dtype=dtypes[k]) for k in self.keys }
@@ -75,8 +81,8 @@ class DummyVecEnv(VecEnv):
             if self.buf_dones[e]:
                 obs = self.envs[e].reset()
             if self.encoder is not None:
-                import ipdb; ipdb.set_trace()
-                obs = self.encoder.predict(obs)
+                image_to_encode = obs['im'].reshape(1,*obs['im'].shape)
+                obs['im'] = self.encoder['im'].predict(image_to_encode)[0]
             self._save_obs(e, obs)
         return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones),
                 self.buf_infos.copy())
@@ -84,6 +90,9 @@ class DummyVecEnv(VecEnv):
     def reset(self):
         for e in range(self.num_envs):
             obs = self.envs[e].reset()
+            if self.encoder is not None:
+                image_to_encode = obs['im'].reshape(1,*obs['im'].shape)
+                obs['im'] = self.encoder['im'].predict(image_to_encode)[0]
             self._save_obs(e, obs)
         return self._obs_from_buf()
 
