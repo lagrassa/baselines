@@ -59,7 +59,11 @@ class DummyVecEnv(VecEnv):
             obs, self.buf_rews[e], self.buf_dones[e], self.buf_infos[e] = self.envs[e].step(noisy_action)
             self.buf_rews[e] = self.buf_rews[e] + np.random.normal(0,self.rew_noise_std)
             if isinstance(obs, dict):
-                obs['observation'] = obs['observation'] + obs['observation']*np.random.normal(np.zeros(obs['observation'].shape),self.obs_noise_std)
+                if 'observation' in obs.keys():
+                    obs['observation'] = obs['observation'] + obs['observation']*np.random.normal(np.zeros(obs['observation'].shape),self.obs_noise_std)
+                else:
+                    for subspace in obs.keys():
+                        obs[subspace] = obs[subspace] + obs[subspace]*np.random.normal(np.zeros(obs[subspace].shape),self.obs_noise_std)
             else:
                 obs = obs + np.random.normal(np.zeros(obs.shape),self.obs_noise_std)
             if self.buf_dones[e]:
