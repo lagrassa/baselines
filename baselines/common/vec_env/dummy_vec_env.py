@@ -1,4 +1,5 @@
 import numpy as np
+from keras.models import load_model
 from gym import spaces
 from . import VecEnv
 from .util import copy_obs_dict, dict_to_obs, obs_space_info
@@ -10,7 +11,7 @@ class DummyVecEnv(VecEnv):
     Useful when debugging and when num_env == 1 (in the latter case,
     avoids communication overhead)
     """
-    def __init__(self, env_fns, action_noise_std=0, obs_noise_std=0, distance_threshold=0.05, rew_noise_std=0.0):
+    def __init__(self, env_fns, action_noise_std=0, obs_noise_std=0, distance_threshold=0.05, rew_noise_std=0.0, encoder=None):
         """
         Arguments:
 
@@ -20,6 +21,11 @@ class DummyVecEnv(VecEnv):
         self.action_noise_std = action_noise_std
         self.obs_noise_std = obs_noise_std
         self.rew_noise_std = rew_noise_std
+        if encoder is not None:
+            encoder = load_model("models/"+encoder)
+            print("Loading autoencoder")
+        self.encoder=encoder
+   
         self.distance_threshold = distance_threshold
         env = self.envs[0]
         VecEnv.__init__(self, len(env_fns), env.observation_space, env.action_space)
@@ -64,6 +70,9 @@ class DummyVecEnv(VecEnv):
                 obs = obs + np.random.normal(np.zeros(obs.shape),self.obs_noise_std)
             if self.buf_dones[e]:
                 obs = self.envs[e].reset()
+            if self.encoder is not None:
+                import ipdb; ipdb.set_trace()
+                obs = self.encoder.predict(obs)
             self._save_obs(e, obs)
         return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones),
                 self.buf_infos.copy())
