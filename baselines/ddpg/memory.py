@@ -6,7 +6,13 @@ class RingBuffer(object):
         self.maxlen = maxlen
         self.start = 0
         self.length = 0
-        self.data = np.zeros((maxlen,) + shape).astype(dtype)
+        try:
+            self.data = np.zeros((maxlen,) + shape).astype(dtype)
+        except:
+            try:
+                self.data = np.zeros((maxlen//10,) + shape).astype(dtype)
+            except:
+                import ipdb; ipdb.set_trace()
 
     def __len__(self):
         return self.length

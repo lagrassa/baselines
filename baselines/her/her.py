@@ -80,6 +80,9 @@ def learn_setup(network, env, total_timesteps=None,
     **kwargs
 ):
     override_params = override_params or {}
+    if seed is None:
+        seed = 17
+    seed = int(seed)
     if MPI is not None:
         rank = MPI.COMM_WORLD.Get_rank()
         num_cpu = MPI.COMM_WORLD.Get_size()
@@ -161,17 +164,18 @@ def learn_setup(network, env, total_timesteps=None,
                        'evaluator':evaluator,
                        'logger':logger}
     return local_variables
-def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,
+def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,success_only=None, 
                save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=None, n_batches=None, policy_save_interval=None, demo_file=None):
 
     # train
     epoch = nupdates
     rollout_worker.clear_history()
+    
     for _ in range(n_cycles):
         episode = rollout_worker.generate_rollouts()
         policy.store_episode(episode)
         for _ in range(n_batches):
-            policy.train()
+            critic_loss, actor_loss= policy.train()
         policy.update_target_net()
 
     # test
@@ -181,12 +185,18 @@ def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nup
 
     # record logs
     logger.record_tabular('epoch', epoch)
+    infos = {}
+    infos["actor_loss"] = actor_loss
+    infos["critic_loss"] = critic_loss
     for key, val in evaluator.logs('test'):
         logger.record_tabular(key, mpi_average(val))
+        #infos[key] = val
     for key, val in rollout_worker.logs('train'):
         logger.record_tabular(key, mpi_average(val))
+        #infos[key] = val
     for key, val in policy.logs():
         logger.record_tabular(key, mpi_average(val))
+        #infos[key] = val
 
     logger.dump_tabular()
 
@@ -208,8 +218,8 @@ def learn_iter(rollout_worker=None,  policy=None, evaluator=None, rank=None, nup
     MPI.COMM_WORLD.Bcast(root_uniform, root=0)
     #if rank != 0:
     #    assert local_uniform[0] != root_uniform[0]
-    return None, success_rate
-def learn_test(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,n_episodes=None, n_steps_per_iter=None,
+    return None, success_rate, infos
+def learn_test(rollout_worker=None,  policy=None, evaluator=None, rank=None, nupdates=None, logger=None,update=None,n_episodes=None, n_steps_per_iter=None,success_only=None,
                save_path=None, n_epochs=None, n_test_rollouts=None, n_cycles=None, n_batches=None, policy_save_interval=None, demo_file=None):
 
     # test
@@ -226,7 +236,7 @@ def learn_test(rollout_worker=None,  policy=None, evaluator=None, rank=None, nup
     MPI.COMM_WORLD.Bcast(root_uniform, root=0)
     #if rank != 0:
     #    assert local_uniform[0] != root_uniform[0]
-    return success_rate
+    return success_rate #_, success_rate, {}
 
 
 

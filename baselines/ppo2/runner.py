@@ -1,4 +1,5 @@
 import numpy as np
+from gym.spaces import Dict
 from baselines.common.runners import AbstractEnvRunner
 
 class Runner(AbstractEnvRunner):
@@ -36,7 +37,7 @@ class Runner(AbstractEnvRunner):
 
             # Take actions in env and look the results
             # Infos contains a ton of useful informations
-            self.obs[:], rewards, self.dones, infos = self.env.step(actions)
+            self.obs, rewards, self.dones, infos = self.env.step(actions)
             """
             action_list = [[ 0.17564379, -0.05669818],
             [-0.2444096,  -0.05721815],
@@ -59,7 +60,11 @@ class Runner(AbstractEnvRunner):
                     epinfos.append(maybeepinfo)
             mb_rewards.append(rewards)
         #batch of steps to batch of rollouts
-        mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
+        try:
+            mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
+        except:
+            pass
+
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
         mb_actions = np.asarray(mb_actions)
         mb_values = np.asarray(mb_values, dtype=np.float32)
@@ -87,6 +92,8 @@ def sf01(arr):
     """
     swap and then flatten axes 0 and 1
     """
+    if isinstance(arr,list):
+        return [[ar.swapaxes(0, 1).reshape(ar.shape[0] * ar.shape[1], *ar.shape[2:]) for ar in arr_sample.values()] for arr_sample in arr] 
     s = arr.shape
     return arr.swapaxes(0, 1).reshape(s[0] * s[1], *s[2:])
 

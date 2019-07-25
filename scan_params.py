@@ -17,11 +17,11 @@ saves the exp_name. might want to do using LLsub
 def run_action_noise_experiment(num_samples, param_set, exp_name, env_name, LLcluster=True, smoke_test = False):
     #create experiment file based on params
     #run experiment using LLsub, probably alg by alg and params by params
-    default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0, 'goal_radius':0.05}
+    default_params = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0, 'goal_radius':0.05, 'rew_noise_std':0.0 }
     for alg in algs:
         default_params['alg'] = alg
         #sample_space = {0, 0.01, 0.1}
-        sample_space={85}
+        sample_space={81}
         #sample_space = {0.01, 0.05, 0.08, 0.1}
         for action_noise_std in sample_space:
             params = default_params.copy()
@@ -70,15 +70,10 @@ def test_write_batch_job():
     f.close()
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
-<<<<<<< HEAD
 #env_name = "FetchPush-v1"
-env_name = "FetchReach-v1"
-exp_name="AL47"
-=======
-#env_name = "FetchReach-v1"
-env_name = "StirEnv-v0"
-exp_name="AL59c"
->>>>>>> 2db4a7ade676b050dbc0a673ebcf023ee7d0eea0
+env_name = "ScoopEnv-v0"
+#env_name = "StirEnv-v0"
+exp_name="AL74"
 param_set = {'env_name':env_name, 'exp_name':exp_name, 'obs_noise_std':0, 'action_noise_std':0, 'goal_radius':0.05}
 
 #optimize_hyperparams(param_set, smoke_test = True)

@@ -1,4 +1,5 @@
 import os
+from itertools import chain
 import inspect
 import time
 import numpy as np
@@ -19,15 +20,17 @@ def constfn(val):
         return val
     return f
 
-def learn_test(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
+def learn_test(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None, success_only = True):
     assert(nsteps > n_episodes)
     obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
-    success_rate =  safemean(returns)
-    #success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
+    if success_only:
+        success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
+    else:
+        success_rate =  safemean(returns)
     return success_rate
 
 
-def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None):
+def learn_iter(nbatch=None, nminibatches=None,  nbatch_train=None, model=None, runner=None, epinfobuf=None, tfirststart=None, nupdates=None, update=None, lr=None, eval_runner=None, cliprange=None, eval_env=None, noptepochs=None, log_interval=None, nsteps=None, nenvs=None, save_interval=None, exp_name=None, n_steps_per_iter=None, n_episodes=None, success_only=True):
 
     assert nbatch % nminibatches == 0
     # Start timer
@@ -61,7 +64,20 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
             for start in range(0, nbatch, nbatch_train):
                 end = start + nbatch_train
                 mbinds = inds[start:end]
-                slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
+                if isinstance(obs, list):
+                    slices = (arr[mbinds] for arr in (returns, masks, actions, values, neglogpacs))
+                    obs_slices = ()
+                    for subspace_i in range(len(obs[0])):
+                        subspace_obs = np.zeros(((len(mbinds),)+obs[0][subspace_i].shape))
+                        for ind in mbinds:
+                            subspace_obs = subspace_obs + (obs[ind][subspace_i],)
+                        subspace_obs = np.array(subspace_obs)
+                        obs_slices = obs_slices + (subspace_obs,)
+                    obs_slices = (obs_slices,)
+                    slices = list(chain(obs_slices, slices))
+
+                else:
+                    slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
                 mblossvals.append(model.train(lrnow, cliprangenow, *slices))
     else: # recurrent version
         assert nenvs % nminibatches == 0
@@ -90,16 +106,13 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
     # Calculate the fps (frame per second)
     fps = int(nbatch / (tnow - tstart))
     mean_reward = safemean([epinfo['r'] for epinfo in epinfobuf])
-    try:
+    if success_only:
         success_rate = safemean([epinfo['is_success'] for epinfo in epinfos])
-    except:
-        success_rate = None
+    else:
         success_rate =  safemean(returns)
-        success_rate = mean_reward
 
-
-        #print("mean reward", mean_reward)
-        #import ipdb; ipdb.set_trace()
+    #print("mean reward", mean_reward)
+    #import ipdb; ipdb.set_trace()
     infos = {}
     ev = explained_variance(values, returns)
     infos["exp_variance"] = float(ev)
@@ -125,12 +138,16 @@ def learn_iter(nbatch=None, nminibatches=None, nbatch_train=None, model=None, ru
         #    logger.logkv(lossname, lossval)
         #if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         #    logger.dumpkvs()
-    #if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
-    #    checkdir = osp.join(logger.get_dir(), 'checkpoints')
-    #    os.makedirs(checkdir, exist_ok=True)
-    #    savepath = osp.join(checkdir, '%.5i'%update)
-    #    print('Saving to', savepath)
-    #    model.save(savepath)
+    model.save("models/"+exp_name)
+    """
+    if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
+        checkdir = osp.join(logger.get_dir(), 'checkpoints')
+        os.makedirs(checkdir, exist_ok=True)
+        savepath = osp.join(checkdir, '%.5i'%update)
+        print('Saving to', savepath)
+        model.save(savepath)
+    """
+    print('success rate', success_rate)
     return model, success_rate, infos
 
 
@@ -143,6 +160,11 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
             batch_size=None,
             save_interval=0, load_path=None, model_fn=None, **network_kwargs):
 
+    lr = 10**(-1*lr)
+    vf_coef = 10**(-1*vf_coef)
+    seed = int(seed)
+    ent_coef = 10**(-1*ent_coef)
+
     if network == "lstm":
         nminibatches=1
     if nsteps is None:
@@ -153,7 +175,6 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
     #np.random.seed(seed)
     if nsteps is None:
         nsteps = n_steps_per_episode
-
     if isinstance(lr, float): lr = constfn(lr)
     else: assert callable(lr)
     if isinstance(cliprange, float): cliprange = constfn(cliprange)
@@ -201,6 +222,7 @@ def learn_setup(*, network=None, env=None, total_timesteps=None, eval_env = None
                        'model':model,
                        'runner':runner,
                        'lr':lr,
+                       'exp_name':exp_name,
                        'nsteps':nsteps,
                        'nenvs':nenvs,
                        'log_interval':log_interval,

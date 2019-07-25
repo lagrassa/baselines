@@ -28,7 +28,7 @@ def learn(network, env,
           render=False,
           render_eval=False,
           noise_type='adaptive-param_0.2',
-          normalize_returns=False,
+          normalize_returns=True,
           normalize_observations=True,
           critic_l2_reg=1e-2,
           exp_name="test",
@@ -44,12 +44,14 @@ def learn(network, env,
           eval_env=None,
           param_noise_adaption_interval=50,
           **network_kwargs):
+           
     local_variables = learn_setup(network, env, seed=seed, total_timesteps=total_timesteps, nb_epochs=nb_epochs, nb_epoch_cycles=nb_epoch_cycles, nb_rollout_steps=100,reward_scale=1.0,render=render,render_eval=render_eval,noise_type='adaptive-param_0.2',normalize_returns=False,normalize_observations=True,critic_l2_reg=1e-2,
           exp_name=exp_name,
           eval_env=eval_env,
           actor_lr=actor_lr,
           critic_lr=critic_lr,
           popart=popart,
+          logspace = False,
           gamma=gamma,
           clip_norm=clip_norm,
           nb_train_steps=nb_train_steps, # per epoch cycle and MPI worker,
@@ -70,15 +72,19 @@ def learn(network, env,
 def learn_setup(network, env,
           seed=None,
           total_timesteps=None,
+          iterations=None,
           nb_epochs=None, # with default settings, perform 1M steps total
           nb_epoch_cycles=None,
           nb_rollout_steps=100,
           n_episodes=None,
+          logspace= True,
           n_steps_per_episode=None,
+          reward_threshold=0,
           reward_scale=1.0,
           render=False,
           render_eval=False,
           noise_type='adaptive-param_0.2',
+          noise_level="0.2",
           normalize_returns=False,
           normalize_observations=True,
           critic_l2_reg=1e-2,
@@ -95,7 +101,14 @@ def learn_setup(network, env,
           eval_env=None,
           param_noise_adaption_interval=50,
           **network_kwargs):
-
+    if logspace:
+        actor_lr = 10**-actor_lr
+        critic_lr = 10**-critic_lr
+        batch_size =2**int(batch_size)
+        if seed is None:
+            seed = 17
+        seed = int(seed)
+        tau = 10**-tau
     set_global_seeds(seed)
     if nb_epoch_cycles is None:
         nb_epoch_cycles = n_episodes 
@@ -114,7 +127,7 @@ def learn_setup(network, env,
     nb_actions = env.action_space.shape[-1]
     assert (np.abs(env.action_space.low) == env.action_space.high).all()  # we assume symmetric actions.
 
-    memory = Memory(limit=int(1e6), action_shape=env.action_space.shape, observation_shape=env.observation_space.shape)
+    memory = Memory(limit=int(1e5), action_shape=env.action_space.shape, observation_shape=env.observation_space.shape)
     critic = Critic(network=network, **network_kwargs)
     actor = Actor(nb_actions, network=network, **network_kwargs)
 
@@ -126,7 +139,9 @@ def learn_setup(network, env,
             if current_noise_type == 'none':
                 pass
             elif 'adaptive-param' in current_noise_type:
+               
                 _, stddev = current_noise_type.split('_')
+                stddev = noise_level
                 param_noise = AdaptiveParamNoiseSpec(initial_stddev=float(stddev), desired_action_stddev=float(stddev))
             elif 'normal' in current_noise_type:
                 _, stddev = current_noise_type.split('_')
@@ -138,6 +153,8 @@ def learn_setup(network, env,
                 raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     max_action = env.action_space.high
+    #print("actual max action", max_action)
+    max_action = 1
     logger.info('scaling actions by {} before executing in env'.format(max_action))
 
     agent = DDPG(actor, critic, memory, env.observation_space.shape, env.action_space.shape,
@@ -174,6 +191,7 @@ def learn_setup(network, env,
         "epoch_episode_steps":epoch_episode_steps,
         "batch_size":batch_size,
         "eval_env":eval_env,
+        "reward_threshold": reward_threshold,
         "epoch_actions" : epoch_actions,
         "nb_train_steps":nb_train_steps,
         "epoch_qs" : epoch_qs,
@@ -194,6 +212,7 @@ def learn_setup(network, env,
         "episodes":[episodes],
         "rank" : rank,
         "param_noise_adaption_interval":param_noise_adaption_interval,
+        "noise_type" : noise_type, 
         "render" : render}
     return local_variables
 
@@ -202,6 +221,7 @@ def learn_test(epoch_episode_rewards=[],
                episode_rewards_history=None,
                update = None,
                epoch_actions = [],
+               reward_scale=1,
                param_noise_adaption_interval=None,
                eval_env=None,
                start_time=None,
@@ -217,6 +237,7 @@ def learn_test(epoch_episode_rewards=[],
                nb_rollout_steps = None,
                agent = None,
                t = None,
+               reward_threshold=None,
                n_episodes=None,
                n_steps_per_iter=None,
                episode_reward = None,
@@ -245,10 +266,13 @@ def learn_iter(epoch_episode_rewards=[],
                epoch_episode_steps=[],
                episode_rewards_history=None,
                update = None,
+               reward_scale=1,
+               reward_threshold=None,
                epoch_actions = [],
                param_noise_adaption_interval=None,
                eval_env=None,
                start_time=None,
+               noise_type="adaptive-param_0.2",
                batch_size=None,
                memory=None,
                epoch_qs = [],
@@ -270,6 +294,7 @@ def learn_iter(epoch_episode_rewards=[],
                nenvs = None,
                obs = None,
                rank = None,
+               success_only = True,
                render = None):
     successes = []
     if n_steps_per_iter is not None:
@@ -277,6 +302,7 @@ def learn_iter(epoch_episode_rewards=[],
     if n_episodes is not None:
         nb_epoch_cycles = n_episodes
     for cycle in range(nb_epoch_cycles):
+        agent.reset()
         # Perform rollouts.
         if nenvs > 1:
             # if simulating multiple envs in parallel, impossible to reset agent at the end of the episode in each
@@ -285,13 +311,13 @@ def learn_iter(epoch_episode_rewards=[],
         for t_rollout in range(nb_rollout_steps):
             # Predict next action.
             action, q, _, _ = agent.step(obs[0], apply_noise=not test, compute_Q=True)
-
             # Execute next action.
             if rank == 0 and render:
                 env.render()
 
             # max_action is of dimension A, whereas action is dimension (nenvs, A) - the multiplication gets broadcasted to the batch
             new_obs, r, done, info = env.step(max_action * action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+
             # note these outputs are batched from vecenv
 
             t[0] += 1
@@ -306,7 +332,6 @@ def learn_iter(epoch_episode_rewards=[],
             agent.store_transition(obs[0], action, r, new_obs, done) #the batched data will be unrolled in memory.py's append.
 
             obs[0] = new_obs
-
             for d in range(len(done)):
                 if done[d]:
                     # Episode done.
@@ -314,14 +339,20 @@ def learn_iter(epoch_episode_rewards=[],
                     episode_rewards_history.append(episode_reward[d])
                     epoch_episode_steps.append(episode_step[d])
                     #successes.append(int(episode_reward[d] >= 0))
-                    successes.append(episode_reward[d])
+                    #import ipdb; ipdb.set_trace()
+                    if success_only:
+                        successes.append(episode_reward[d]/reward_scale > reward_threshold)
+                    else:
+                        successes.append(episode_reward[d]/reward_scale)
+
+                    #successes.append(episode_reward[d])
                     episode_reward[d] = 0.
                     episode_step[d] = 0
                     epoch_episodes[0] += 1
                     episodes[0] += 1
-                    if nenvs == 1:
-                        agent.reset()
-
+                    new_obs = [env.reset()]
+                    obs = new_obs
+                    agent.reset()
         if not test:
             #train
             epoch_actor_losses = []
@@ -337,7 +368,6 @@ def learn_iter(epoch_episode_rewards=[],
                 epoch_critic_losses.append(cl)
                 epoch_actor_losses.append(al)
                 agent.update_target_net()
-
 
     if MPI is not None:
         mpi_size = MPI.COMM_WORLD.Get_size()
@@ -361,7 +391,7 @@ def learn_iter(epoch_episode_rewards=[],
         combined_stats['total/duration'] = duration
 
         combined_stats['rollout/success_rate'] = np.mean(successes)
-        print("successes", np.mean(successes))
+        #assert(not (successes == successes[0]).all() or successes[0] == )
         combined_stats['total/steps_per_second'] = float(t[0]) / float(duration)
         combined_stats['total/episodes'] = episodes
         combined_stats['rollout/episodes'] = epoch_episodes[0]
@@ -397,8 +427,8 @@ def learn_iter(epoch_episode_rewards=[],
         for key in sorted(combined_stats.keys()):
             logger.record_tabular(key, combined_stats[key])
 
-        #if rank == 0:
-        #    logger.dump_tabular()
+        if rank == 0:
+            logger.dump_tabular()
         logger.info('')
         logdir = logger.get_dir()
         if rank == 0 and logdir:
