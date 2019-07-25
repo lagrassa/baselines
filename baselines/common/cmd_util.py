@@ -25,6 +25,7 @@ def make_vec_env(env_id, env_type, num_env, seed,
                  flatten_dict_observations=True,
                  action_noise_std=0,
                  distance_threshold=None,
+                 encoder=None,
                  obs_noise_std=0,
                  rew_noise_std=0,
                  gamestate=None):
@@ -52,7 +53,7 @@ def make_vec_env(env_id, env_type, num_env, seed,
         assert(False, "Not supported yet")
         return SubprocVecEnv([make_thunk(i + start_index) for i in range(num_env)])
     else:
-        return DummyVecEnv([make_thunk(start_index)],action_noise_std=action_noise_std, rew_noise_std=rew_noise_std,  obs_noise_std=obs_noise_std, distance_threshold=distance_threshold)
+        return DummyVecEnv([make_thunk(start_index)],action_noise_std=action_noise_std, rew_noise_std=rew_noise_std,  obs_noise_std=obs_noise_std, distance_threshold=distance_threshold, encoder=encoder)
 
 
 def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, distance_threshold=None, gamestate=None, flatten_dict_observations=True, wrapper_kwargs=None):

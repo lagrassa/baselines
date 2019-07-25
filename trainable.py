@@ -105,8 +105,13 @@ def make_class(params):
             self.nupdates_total = total_iters
             print("total num updates", self.nupdates_total)
             self.nupdates = 1
+<<<<<<< HEAD
+            encoder_model = "encoder.h5"
+            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius, encoder=encoder_model)
+=======
             
             env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=force_flat, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
+>>>>>>> a1f83668886a9e27adffc1e5aeb0fe475ff34742
             #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
             if self.alg == "ppo2":
                 #env = VecNormalize(env)
@@ -116,7 +121,7 @@ def make_class(params):
             learn_params["exp_name"] = get_formatted_name(self.params)
              
             load_path = None
-    
+            #learn_params["load_file"] = "ppo2ScoopEnv-v0AL83mlpobs_0.0act_0.0rw_0.3rew_noise_std_0.0" 
             self.local_variables = self.alg_module.learn_setup(**learn_params)
             self.mean_reward_over_samples = []
             if env_name in ["FetchPush-v1", "FetchReach-v1"]:

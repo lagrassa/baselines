@@ -70,7 +70,7 @@ def test_write_batch_job():
     f.close()
 
 #optimize_hyperparams({'env_name':"FetchPush-v1", 'exp_name':"test", 'obs_noise_std':0, 'action_noise_std':0, 'alg':'naf'})
-#env_name = "FetchReach-v1"
+#env_name = "FetchPush-v1"
 env_name = "ScoopEnv-v0"
 #env_name = "StirEnv-v0"
 exp_name="AL74"
