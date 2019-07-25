@@ -14,6 +14,7 @@ class AbstractEnvRunner(ABC):
                 self.obs[obs_subspace] = np.zeros((nenv,) + env.observation_space.spaces[obs_subspace].shape, dtype=env.observation_space.spaces[obs_subspace].dtype.name)
             obs_parts = env.reset()
             for obs_subspace, obs_part in zip(env.observation_space.spaces.keys(), obs_parts):
+                import ipdb; ipdb.set_trace()
                 self.obs[obs_subspace][:] = obs_parts[obs_part]
 
         else:

@@ -19,7 +19,7 @@ tune_alg_to_iters = {'ppo2':300, 'ddpg':100, 'naf':80, 'cma':300, 'her':5000//50
 tune_alg_to_iters = {'ppo2':30, 'ddpg':30, 'naf':80, 'cma':30, 'her':5000//50}
 #n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40}
 n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':42}
-n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':40, 'ScoopEnv-v0':8} #was 10 for a while.... 
+n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':40, 'ScoopEnv-v0':4} #was 10 for a while.... 
 #tune_alg_to_iters = {'ppo2':800, 'ddpg':80, 'naf':80, 'cma':20, 'her':5000}
 
 #register(
@@ -116,7 +116,7 @@ def make_class(params):
             learn_params["exp_name"] = get_formatted_name(self.params)
              
             load_path = None
-            learn_params["load_file"] = "ppo2ScoopEnv-v0AL83mlpobs_0.0act_0.0rw_0.3rew_noise_std_0.0" 
+            #learn_params["load_file"] = "ppo2ScoopEnv-v0AL83mlpobs_0.0act_0.0rw_0.3rew_noise_std_0.0" 
             self.local_variables = self.alg_module.learn_setup(**learn_params)
             self.mean_reward_over_samples = []
             if env_name in ["FetchPush-v1", "FetchReach-v1"]:
@@ -195,7 +195,6 @@ def alg_to_config(alg, env_name=None, force_flat = False):
         network = "mlp_combine"
     else:
         network = "mlp"
-    network = "mlp_combine"
     if alg == "ppo2":
         sample_config =  {"lr": tune.sample_from(
             lambda spec: np.random.choice([2,3,4,5])),
