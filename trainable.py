@@ -105,13 +105,8 @@ def make_class(params):
             self.nupdates_total = total_iters
             print("total num updates", self.nupdates_total)
             self.nupdates = 1
-<<<<<<< HEAD
-            encoder_model = "encoder.h5"
-            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius, encoder=encoder_model)
-=======
-            
-            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=force_flat, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
->>>>>>> a1f83668886a9e27adffc1e5aeb0fe475ff34742
+            encoder_model = None #"encoder.h5"
+            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale,flatten_dict_observations = force_flat, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius, encoder=encoder_model)
             #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
             if self.alg == "ppo2":
                 #env = VecNormalize(env)
