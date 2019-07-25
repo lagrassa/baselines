@@ -18,7 +18,7 @@ train_alg_to_iters = {'ppo2':1e5, 'ddpg':1e5, 'naf':1e6, 'cma':1e5, 'her':90000}
 tune_alg_to_iters = {'ppo2':300, 'ddpg':100, 'naf':80, 'cma':300, 'her':5000//50}
 tune_alg_to_iters = {'ppo2':30, 'ddpg':30, 'naf':80, 'cma':30, 'her':5000//50}
 #n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40}
-n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':60}
+n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':42}
 n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':40, 'ScoopEnv-v0':8} #was 10 for a while.... 
 #tune_alg_to_iters = {'ppo2':800, 'ddpg':80, 'naf':80, 'cma':20, 'her':5000}
 
@@ -79,7 +79,7 @@ def make_class(params):
                                    inter_op_parallelism_threads=1)
             config.gpu_options.allow_growth = True
             get_session(config=config)
-            force_flat = False
+            force_flat = True
             if self.alg =="her":
                 force_flat = False
 
@@ -105,13 +105,9 @@ def make_class(params):
             self.nupdates_total = total_iters
             print("total num updates", self.nupdates_total)
             self.nupdates = 1
-<<<<<<< HEAD
-            encoder_model = "encoder.h5"
-            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius, encoder=encoder_model)
-=======
-            
-            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=force_flat, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
->>>>>>> a1f83668886a9e27adffc1e5aeb0fe475ff34742
+            #encoder_model = {"im":"encoder.h5"}
+            encoder_model=None
+            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=force_flat, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius, encoder=encoder_model)
             #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
             if self.alg == "ppo2":
                 #env = VecNormalize(env)
@@ -121,7 +117,7 @@ def make_class(params):
             learn_params["exp_name"] = get_formatted_name(self.params)
              
             load_path = None
-            #learn_params["load_file"] = "ppo2ScoopEnv-v0AL83mlpobs_0.0act_0.0rw_0.3rew_noise_std_0.0" 
+            learn_params["load_file"] = "ppo2ScoopEnv-v0AL83mlpobs_0.0act_0.0rw_0.3rew_noise_std_0.0" 
             self.local_variables = self.alg_module.learn_setup(**learn_params)
             self.mean_reward_over_samples = []
             if env_name in ["FetchPush-v1", "FetchReach-v1"]:
@@ -197,10 +193,10 @@ def alg_to_config(alg, env_name=None, force_flat = False):
     else:
         thresh=-50
     if env_name == "ScoopEnv-v0" and not force_flat:
-        network = "cnn_and_1d"
-
+        network = "mlp_combine"
     else:
         network = "mlp"
+    network = "mlp_combine"
     if alg == "ppo2":
         sample_config =  {"lr": tune.sample_from(
             lambda spec: np.random.choice([2,3,4,5])),

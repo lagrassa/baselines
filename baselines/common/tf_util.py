@@ -379,6 +379,14 @@ def adjust_shape(placeholder, data):
         reshaped data
     '''
 
+    if isinstance(data, dict):
+        ordered_data = ()
+        for place in placeholder:
+            for key in data.keys(): # assumes all data has different shapes, which is kinda bad. probably should just make tensors dictionaries
+                if place.get_shape() == data[key].shape:
+                    ordered_data = ordered_data + (data[key],)
+        assert(len(ordered_data) == 2) 
+        return ordered_data
     if not isinstance(data, np.ndarray) and not isinstance(data, list):
         return data
     if isinstance(data, list):
