@@ -79,7 +79,7 @@ def make_class(params):
                                    inter_op_parallelism_threads=1)
             config.gpu_options.allow_growth = True
             get_session(config=config)
-            force_flat = True
+            force_flat = False
             if self.alg =="her":
                 force_flat = False
 
