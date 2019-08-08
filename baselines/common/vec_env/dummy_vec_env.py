@@ -1,4 +1,5 @@
 import numpy as np
+from collections import deque
 from keras.models import load_model
 from gym import spaces
 from . import VecEnv
@@ -21,35 +22,44 @@ class DummyVecEnv(VecEnv):
         self.action_noise_std = action_noise_std
         self.obs_noise_std = obs_noise_std
         self.rew_noise_std = rew_noise_std
+        env = self.envs[0]
         if encoder is not None:
             encoder_dict = {}
             if 'im' in encoder.keys():
-                encoder_dict['im'] = load_model("models/"+encoder["im"])
+                encoder_dict['im'] = [load_model(model_fn) for model_fn in encoder["im"]]
             if 'forces' in encoder.keys():
                 encoder_dict['forces'] = encoder["forces"]
+                self.obs_buffer = deque(maxlen=encoder["forces"].flow[1].output_dim//encoder["forces"].flow[1].input_dim)
+            else:
+                self.obs_buffer = deque(maxlen=1)
+                try:
+                   self.obs_space = self.envs[0].env.env.env.observation_space
+                except  AttributeError: #sorry, I know thisis bad
+                   self.obs_space = self.envs[0].env.env.observation_space
+
             print("Loading autoencoder")
+            
             try:
                 self.envs[0].env.env.gen_obs_space(encoder_dict)
+                self.obs_space = self.envs[0].env.env.observation_space
             except  AttributeError: #sorry, I know thisis bad
-                self.envs[0].env.env.env.gen_obs_space(encoder_dict)
+                try:
+                    self.envs[0].env.env.env.gen_obs_space(encoder_dict)
+                    self.obs_space = self.envs[0].env.env.env.observation_space
+                except  AttributeError: #sorry, I know thisis bad
+                    self.envs[0].env.env.gen_obs_space(encoder_dict)
+                    self.obs_space = self.envs[0].env.env.observation_space
+
 
             self.encoder=encoder_dict
         else:
             self.encoder=None
+            self.obs_buffer = deque(maxlen=1)
+            self.obs_space = env.env.observation_space
    
         self.distance_threshold = distance_threshold
-        env = self.envs[0]
-        VecEnv.__init__(self, len(env_fns), env.env.env.observation_space, env.action_space)
-        if encoder is not None: #this is such a bad hack, assuming no autoencoders for mlp
-            try:
-                obs_space = env.env.env.env.observation_space
-            except AttributeError:
-                obs_space = env.env.env.observation_space
-
-        else:
-            obs_space = env.observation_space
-
-        self.keys, shapes, dtypes = obs_space_info(obs_space)
+        VecEnv.__init__(self, len(env_fns), self.obs_space, env.action_space)
+        self.keys, shapes, dtypes = obs_space_info(self.obs_space)
 
         self.buf_obs = { k: np.zeros((self.num_envs,) + tuple(shapes[k]), dtype=dtypes[k]) for k in self.keys }
         self.buf_dones = np.zeros((self.num_envs,), dtype=np.bool)
@@ -93,12 +103,21 @@ class DummyVecEnv(VecEnv):
                 obs = obs + np.random.normal(np.zeros(obs.shape),self.obs_noise_std)
             if self.buf_dones[e]:
                 obs = self.envs[e].reset()
+            if isinstance(obs, dict) and "forces" in obs.keys():
+                if len(self.obs_buffer) < self.obs_buffer.maxlen:
+                    for _ in range(self.obs_buffer.maxlen-len(self.obs_buffer)):
+                        self.obs_buffer.append(obs["forces"])
+                else:
+                    self.obs_buffer.append(obs["forces"])
             if self.encoder is not None:
                 if "im" in self.encoder.keys():
-                    image_to_encode = obs['im'].reshape(1,*obs['im'].shape)
-                    obs['im'] = self.encoder['im'].predict(image_to_encode)[0]
+                    obs['imside'] = self.encoder['im'][0].predict( obs['imside'].reshape(1,*obs['imside'].shape))[0]
+                    obs['imtop'] = self.encoder['im'][1].predict( obs['imtop'].reshape(1,*obs['imtop'].shape))[0]
                 if "forces" in self.encoder.keys():
-                    obs['forces'] = self.encoder['forces'](obs['forces'].reshape(-1,1))
+                    try:
+                        obs['forces'] = self.encoder['forces'](np.vstack(self.obs_buffer))
+                    except:
+                        pass
             self._save_obs(e, obs)
         return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones),
                 self.buf_infos.copy())
@@ -106,12 +125,18 @@ class DummyVecEnv(VecEnv):
     def reset(self):
         for e in range(self.num_envs):
             obs = self.envs[e].reset()
+            if isinstance(obs,dict) and  len(self.obs_buffer) < self.obs_buffer.maxlen and "forces" in obs.keys():
+                for _ in range(self.obs_buffer.maxlen-len(self.obs_buffer)):
+                    self.obs_buffer.append(obs["forces"])
             if self.encoder is not None:
                 if "im" in self.encoder.keys():
-                    image_to_encode = obs['im'].reshape(1,*obs['im'].shape)
-                    obs['im'] = self.encoder['im'].predict(image_to_encode)[0]
+                    obs['imside'] = self.encoder['im'][0].predict( obs['imside'].reshape(1,*obs['imside'].shape))[0]
+                    obs['imtop'] = self.encoder['im'][1].predict( obs['imtop'].reshape(1,*obs['imtop'].shape))[0]
                 if "forces" in self.encoder.keys():
-                    obs['forces'] = self.encoder['forces'](obs['forces'].reshape(-1,1))
+                    try:
+                        obs['forces'] = self.encoder['forces'](np.vstack(self.obs_buffer))
+                    except:
+                        pass
             self._save_obs(e, obs)
         return self._obs_from_buf()
 
@@ -133,3 +158,7 @@ class DummyVecEnv(VecEnv):
             return self.envs[0].render(mode=mode)
         else:
             return super().render(mode=mode)
+
+def unwrap_env(unwrapped_env, timeout=10):
+    for i in range(timeout):
+        return

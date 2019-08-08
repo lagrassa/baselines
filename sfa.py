@@ -8,7 +8,7 @@ import mdp
 '''
 @param signal_list n x m array with n points in time that are m dimensional
 '''
-lookback = 6
+lookback = 3
 
 def train_sfa(signal_list, degree=2, lookback=3):
     #put into format where columns are variables and rows are observations
@@ -54,9 +54,8 @@ if __name__ == "__main__":
     signal = np.load("force_states.npy")
     im = visualization_matrix(signal,split=True)
     #plot_im(im)
-    encoded = trained_system(signal)
+    encoded = trained_system(signal[0].reshape((1,6)))
     im = visualization_matrix(encoded)
-    import ipdb; ipdb.set_trace()
     plot_im(im)
     #Image.fromarray(255*encoded).resize((200,500)).show()
 

@@ -69,14 +69,15 @@ def cnn(**conv_kwargs):
 def cnn_small(**conv_kwargs):
     def network_fn(X):
         #[<tf.Tensor 'ppo2_model/Ob:0' shape=(1, 6) dtype=float32>, <tf.Tensor 'ppo2_model/Ob_1:0' shape=(1, 50, 50, 3) dtype=float32>]
+        ims = []
         for tensor in X:
             if len(tensor.get_shape()) == 2:
                 forces = tensor
             else:
-                im = tensor
+                ims.append(tensor)
         activ = tf.nn.relu
-        im = tf.layers.flatten(im)
-        h = tf.concat([im, forces], axis=1)
+        ims = [tf.layers.flatten(im) for im in ims]
+        h = tf.concat(ims+[forces], axis=1)
         h = activ(fc(h, 'fc1', nh=64, init_scale=np.sqrt(2)))
         h = activ(fc(h, 'fc2', nh=12, init_scale=np.sqrt(2)))
         return h

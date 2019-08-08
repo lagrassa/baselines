@@ -29,20 +29,21 @@ autoencoder = Model(input_img, decoded)
 autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
 
 from keras.callbacks import TensorBoard
-data = np.load("states.npy")/255.0
+img_type = "top"
+data = np.load("total_"+img_type+"_states.npy")/255.0
 split = int(data.shape[0]*0.85)
 x_train = data[:split]
 x_test = data[split:]
 
 autoencoder.fit(x_train, x_train,
                 validation_data =(x_test, x_test),
-                epochs=150,
-                batch_size=128,
+                epochs=200,
+                batch_size=100,
                 shuffle=True,
                 callbacks=[TensorBoard(log_dir='/tmp/autoencoder')])
 
 encoder = Model(input_img, encoded)
-encoder.save("models/encoder.h5")
+encoder.save("models/encoder"+img_type+".h5")
 
 
 #del encoder

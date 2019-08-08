@@ -17,16 +17,17 @@ GIT_DIR = os.environ["HOME"]+"/git/"
 SAVE_DIR = os.environ["HOME"]+"/git/baselines/"
 train_alg_to_iters = {'ppo2':1e5, 'ddpg':1e5, 'naf':1e6, 'cma':1e5, 'her':90000}
 tune_alg_to_iters = {'ppo2':300, 'ddpg':100, 'naf':80, 'cma':300, 'her':5000//50}
-tune_alg_to_iters = {'ppo2':30, 'ddpg':30, 'naf':80, 'cma':30, 'her':5000//50}
+tune_alg_to_iters = {'ppo2':20, 'ddpg':30, 'naf':80, 'cma':30, 'her':5000//50}
 #n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40}
-n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':42}
-n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':40, 'ScoopEnv-v0':4} #was 10 for a while.... 
+n_steps_per_iter_per_env = {'StirEnv-v0':18, 'Reacher-v2':50, 'FetchPush-v1':50, 'FetchReach-v1':50, 'ScoopEnv-v0':40} #42
+n_episodes_per_env = {'StirEnv-v0':8, 'Reacher-v2':40, 'FetchPush-v1':40, 'FetchReach-v1':40, 'ScoopEnv-v0':3} #was 4 for a while.... 
 #tune_alg_to_iters = {'ppo2':800, 'ddpg':80, 'naf':80, 'cma':20, 'her':5000}
 
 #register(
 #    id='StirEnv-v0',
 #    entry_point='cup_skills.floating_stirrer.World'
 #)
+
 
 
 def alg_to_module(alg):
@@ -80,7 +81,7 @@ def make_class(params):
                                    inter_op_parallelism_threads=1)
             config.gpu_options.allow_growth = True
             get_session(config=config)
-            force_flat = False
+            force_flat = True
             if self.alg =="her":
                 force_flat = False
 
@@ -106,9 +107,13 @@ def make_class(params):
             self.nupdates_total = total_iters
             print("total num updates", self.nupdates_total)
             self.nupdates = 1
-            encoder_model = None #"encoder.h5"
-            #sfa_node = make_sfa_node("force_states.npy")
-            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale,flatten_dict_observations = force_flat, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius)
+            encoder_option = params["encoder"] 
+            if len(encoder_option.keys()) == 0:
+                encoder_option = None
+            else:
+                assert(False)
+            assert(force_flat)
+            env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale,flatten_dict_observations = force_flat, rew_noise_std=rew_noise_std, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std, distance_threshold=goal_radius, encoder=encoder_option)
             #env = make_vec_env(env_name, "mujoco", env_config['num_env'] or 1, None, reward_scale=reward_scale, flatten_dict_observations=flatten_dict_observations, action_noise_std=action_noise_std, obs_noise_std=obs_noise_std)
             if self.alg == "ppo2":
                 #env = VecNormalize(env)
@@ -117,8 +122,7 @@ def make_class(params):
                 learn_params['env'] = env 
             learn_params["exp_name"] = get_formatted_name(self.params)
              
-            load_path = None
-            learn_params["load_file"] = "ppo2ScoopEnv-v0AL83128bothobs_0.0act_0.0rw_0.3rew_noise_std_0.0" 
+            #learn_params["load_file"] = "ppo2ScoopEnv-v0AL83bneitherobs_0.0act_0.0rw_0.3rew_noise_std_0.0" 
             self.local_variables = self.alg_module.learn_setup(**learn_params)
             self.mean_reward_over_samples = []
             if env_name in ["FetchPush-v1", "FetchReach-v1"]:
@@ -323,9 +327,9 @@ def alg_to_config(alg, env_name=None, force_flat = False):
         cont_space =  {"seed": [1,10]}
         fixed_config = {'network':'mlp',
                 'policy_save_interval':200,
-                'n_cycles':10,#10,
+                'n_cycles':100,# n_episodes_per_env[env_name],#10,
                 'n_batches':40,#40,
-                'n_test_rollouts':5,#5
+                'n_test_rollouts':10,#5
                 'n_steps_per_episode':50}  # better at 100 for some reason NBATCH_STANDARD}
         fixed_config['n_episodes'] = fixed_config['n_cycles']
         env_config = {'num_env':1
@@ -346,9 +350,9 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
     else:
         grace_period = 5
         max_t = 1e6//40 #this doesn't actually mean anything. Trainable takes care of killing processes when they go on for too long
-        num_samples = 20 #30
+        num_samples = 30 #30
         num_cpu = 1#10
-        num_total_cpu = 10
+        num_total_cpu = 12
         num_gpu = 0
     space = alg_to_config(params['alg'],params['env_name'])[3]
     bayes_opt = BayesOptSearch(
@@ -388,12 +392,16 @@ def run_async_hyperband(smoke_test = False, expname = "test", obs_noise_std=0, a
 """
 Precondition: hyperparameter optimization happened
 """
-def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=None):
+def run_alg(params, iters=2,hyperparam_file = None, LLcluster=True, exp_number=None, use_sfa=False, use_auto=False):
     exp_name = get_formatted_name(params)
     if hyperparam_file is None:
         hyperparam_file = "hyperparams/"+exp_name+"best_hyperparams.npy"
-    hyperparams = np.load(hyperparam_file, allow_pickle=True).all()
-
+    hyperparams = np.load(hyperparam_file, allow_pickle=True, encoding="latin1").all()
+    params["encoder"] = {}
+    if use_sfa:
+        params["encoder"]["forces"] = make_sfa_node(SAVE_DIR+"force_states.npy")
+    if use_auto: 
+        params["encoder"]["im"] = (SAVE_DIR+"models/encoderside.h5", SAVE_DIR+"models/encodertop.h5")
     args = {"sample_config_best":hyperparams}
     #overwrite the old ones
     args["obs_noise_std"] = params["obs_noise_std"]
@@ -451,7 +459,8 @@ if __name__=="__main__":
         print(params)
         n_episodes=alg_to_config(params["alg"], params['env_name'])[1]['n_episodes']
         num_iters = train_alg_to_iters[params["alg"]]//n_episodes
-        run_alg(params, iters=int(num_iters), hyperparam_file = sys.argv[7], LLcluster=False, exp_number=int(sys.argv[8]))
+        run_alg(params, iters=int(num_iters), hyperparam_file = sys.argv[7], LLcluster=False, exp_number=int(sys.argv[8]), 
+                use_sfa="sfa" in sys.argv, use_auto = "useauto" in sys.argv)
 
     else:
         exp_name = sys.argv[1] 
